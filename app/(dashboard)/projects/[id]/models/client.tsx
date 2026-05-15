@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Icons } from "@/components/icons";
 import { ProviderChip, SectionHead } from "@/components/ui";
 import { fmt } from "@/lib/format";
+import { switchActiveModel } from "@/lib/actions/switch-model";
 import type { AIModel } from "@/lib/types";
 
 interface HistoryRow {
@@ -31,14 +32,31 @@ export function ProjectModelsClient({
 }) {
   const [selected, setSelected] = useState(activeModelId);
   const [activeModel, setActiveModel] = useState(activeModelId);
+  const [pending, startTransition] = useTransition();
+  const [toast, setToast] = useState<string | null>(null);
+
   const current = models.find((m) => m.id === activeModel);
   const candidate = models.find((m) => m.id === selected);
   const compatible = models.filter((m) => m.is_current);
 
   const activate = () => {
     if (selected === activeModel) return;
-    setActiveModel(selected);
-    // TODO: call Server Action to persist via Supabase + after()-log audit
+    const toModelId = selected;
+    const fromModelId = activeModel;
+    startTransition(async () => {
+      const res = await switchActiveModel({
+        projectId,
+        fromModelId,
+        toModelId,
+      });
+      if (res.ok) {
+        setActiveModel(toModelId);
+        setToast(res.message ?? "Modell aktiverad.");
+      } else {
+        setToast("Fel: " + (res.message ?? "okänd"));
+      }
+      setTimeout(() => setToast(null), 4000);
+    });
   };
 
   return (
@@ -90,12 +108,13 @@ export function ProjectModelsClient({
                     <button
                       className="b sm primary"
                       type="button"
+                      disabled={pending}
                       onClick={(e) => {
                         e.stopPropagation();
                         activate();
                       }}
                     >
-                      Aktivera
+                      {pending ? "Aktiverar…" : "Aktivera"}
                     </button>
                   ) : (
                     <span
@@ -112,6 +131,20 @@ export function ProjectModelsClient({
               </div>
             ))}
           </div>
+          {toast && (
+            <div
+              className="mt-3"
+              style={{
+                padding: "10px 12px",
+                background: "var(--c-mint-soft)",
+                color: "var(--c-mint-ink)",
+                borderRadius: 6,
+                fontSize: 13,
+              }}
+            >
+              {toast}
+            </div>
+          )}
         </div>
 
         <div className="card">
@@ -218,9 +251,10 @@ export function ProjectModelsClient({
               className="b primary mt-4"
               style={{ width: "100%", justifyContent: "center" }}
               type="button"
+              disabled={pending}
               onClick={activate}
             >
-              Aktivera {candidate.display}
+              {pending ? "Aktiverar…" : "Aktivera " + candidate.display}
             </button>
           </div>
         )}
