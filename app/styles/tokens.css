@@ -1,0 +1,244 @@
+/* ============================================================
+   HAUS AI — Design Tokens
+   Built from haus.se brand extraction + Seriguela × Apercu
+   Canvas: warm off-white. Ink: near-black. Accents: pastel.
+   ============================================================ */
+
+/* -------- Apercu (grotesque sans, UI workhorse) -------- */
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-LightItalic.otf") format("opentype"); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-Italic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-MediumItalic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Apercu"; src: url("/fonts/Apercu-BoldItalic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Apercu Mono"; src: url("/fonts/Apercu-Mono.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+
+/* -------- Seriguela (editorial serif — expected at fonts/Seriguela-*.otf) -------- */
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-ExLight.otf") format("opentype"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-ExLightItalic.otf") format("opentype"); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Thin.otf") format("opentype"); font-weight: 250; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-ThinItalic.otf") format("opentype"); font-weight: 250; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-LightItalic.otf") format("opentype"); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-RegularItalic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-MediumItalic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-SemiBold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-SemiBoldItalic.otf") format("opentype"); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-BoldItalic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Black.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-BlackItalic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-ExLight.otf") format("opentype"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-ExLightItalic.otf") format("opentype"); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Thin.otf") format("opentype"); font-weight: 250; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-ThinItalic.otf") format("opentype"); font-weight: 250; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-LightItalic.otf") format("opentype"); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-RegularItalic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-MediumItalic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-SemiBold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-SemiBoldItalic.otf") format("opentype"); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-BoldItalic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Black.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-BlackItalic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: "Seriguela Poster"; src: url("/fonts/Seriguela-Poster.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Poster"; src: url("/fonts/Seriguela-Display-Poster.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Seriguela Poster"; src: url("/fonts/Seriguela-Display-PosterItalic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
+
+:root {
+  /* ---- Type stacks --------------------------------------
+     Fallback chain: Seriguela → Playfair Display (loaded from Google
+     Fonts in the page head) → Georgia. Playfair has similar optical
+     size + contrast, so the tight tracking still works gracefully. */
+  --font-display: "Seriguela Display", "Seriguela", "Playfair Display", Georgia, serif;
+  --font-serif:   "Seriguela", "Playfair Display", Georgia, serif;
+  --font-poster:  "Seriguela Poster", "Seriguela Display", "Playfair Display", Georgia, serif;
+  --font-sans:    "Apercu", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:    "Apercu Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ---- Type scale --------------------------------------- */
+  --fs-micro: 11px;   --lh-micro: 14px;
+  --fs-xs:    12px;   --lh-xs:    16px;
+  --fs-sm:    14px;   --lh-sm:    20px;
+  --fs-body:  16px;   --lh-body:  26px;
+  --fs-lg:    18px;   --lh-lg:    28px;
+  --fs-xl:    21px;   --lh-xl:    30px;  /* matches Haus body hero */
+  --fs-2xl:   27px;   --lh-2xl:   34px;
+  --fs-3xl:   36px;   --lh-3xl:   42px;
+  --fs-4xl:   48px;   --lh-4xl:   52px;
+  --fs-5xl:   64px;   --lh-5xl:   66px;
+  --fs-6xl:   96px;   --lh-6xl:   96px;
+  --fs-7xl:  144px;   --lh-7xl:  132px;
+  --fs-8xl:  213px;   --lh-8xl:  192px;  /* Haus h1 hero scale */
+  --fs-9xl:  320px;   --lh-9xl:  280px;  /* Haus AI / Strategy display */
+
+  /* ---- Color — canonical Haus palette ------------------
+     Extracted from haus.se:
+     - Paper #F2F0EB (warm cream canvas on every page)
+     - Ink   #313231 (near-black body + primary buttons)
+     - Muted #69727D, #4D4D4D
+     - Accents: #A9FCAE (electric mint — Strategy), #6EC1E4 (sky — link),
+       #EC5F5F (tomato — haus brand red, sampled from logo)
+     Expanded with a tuned pastel family that harmonizes with paper. */
+
+  /* Core neutrals */
+  --c-paper:       #F2F0EB;   /* canonical canvas */
+  --c-paper-2:     #EAE7DF;   /* elevated surface */
+  --c-paper-3:     #DFDBD0;   /* recessed */
+  --c-chalk:       #FBFAF6;   /* true near-white */
+  --c-ink:         #313231;   /* primary text / buttons */
+  --c-ink-2:       #4D4D4D;   /* body secondary */
+  --c-ink-3:       #69727D;   /* tertiary / muted */
+  --c-ink-4:       #A3A39A;   /* disabled / captions */
+  --c-line:        rgba(49, 50, 49, 0.14);
+  --c-line-soft:   rgba(49, 50, 49, 0.08);
+
+  /* Brand accents — canonical */
+  --c-mint:        #A9FCAE;   /* electric mint — brand signature */
+  --c-mint-ink:    #0F3A1A;
+  --c-sky:         #6EC1E4;   /* link + accent sky */
+  --c-sky-ink:     #0C3A54;
+  --c-tomato:      #EC5F5F;   /* haus brand red — sampled from logo */
+  --c-tomato-ink:  #5A1917;
+
+  /* Extended pastels — tuned to paper */
+  --c-mint-soft:    #DCF8DE;
+  --c-sky-soft:     #CDE7F5;
+  --c-tomato-soft:  #F9D4D4;
+  --c-butter:       #FCE8A5;
+  --c-butter-ink:   #5E4005;
+  --c-butter-soft:  #FBF1CC;
+  --c-apricot:      #FFC9A8;
+  --c-apricot-ink:  #6E2E0C;
+  --c-apricot-soft: #FFE2CC;
+  --c-lilac:        #D9C9ED;
+  --c-lilac-ink:    #3E2568;
+  --c-lilac-soft:   #ECE3F5;
+  --c-blush:        #F5C9D8;
+  --c-blush-ink:    #6D1B38;
+  --c-blush-soft:   #FADEE6;
+
+  /* Semantic (derived) */
+  --c-success:  var(--c-mint-ink);
+  --c-warning:  #C97B1A;
+  --c-danger:   var(--c-tomato-ink);
+  --c-info:     var(--c-sky-ink);
+
+  /* ---- Spacing (4px base) ------------------------------- */
+  --s-0: 0;  --s-1: 4px;  --s-2: 8px;   --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px;
+  --s-14: 56px; --s-16: 64px; --s-20: 80px; --s-24: 96px; --s-32: 128px;
+  --s-40: 160px; --s-48: 192px;
+
+  /* ---- Radius — Haus uses mostly 4px, pills for buttons -- */
+  --r-xs: 2px; --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
+  --r-xl: 20px; --r-2xl: 28px; --r-pill: 1000px;
+
+  /* ---- Shadow — soft paper shadow ----------------------- */
+  --sh-1: 0 1px 2px rgba(49, 50, 49, 0.06);
+  --sh-2: 0 4px 12px rgba(49, 50, 49, 0.06), 0 1px 2px rgba(49, 50, 49, 0.04);
+  --sh-3: 0 12px 28px rgba(49, 50, 49, 0.08), 0 4px 8px rgba(49, 50, 49, 0.04);
+  --sh-4: 0 24px 56px rgba(49, 50, 49, 0.12), 0 8px 16px rgba(49, 50, 49, 0.06);
+
+  /* ---- Borders ------------------------------------------ */
+  --bd-hairline: 1px solid var(--c-line-soft);
+  --bd-line:     1px solid var(--c-line);
+  --bd-strong:   1.5px solid var(--c-ink);
+
+  /* ---- Motion ------------------------------------------- */
+  --ease-out:   cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-fast: 140ms; --t-base: 220ms; --t-slow: 420ms;
+
+  /* ---- Layout ------------------------------------------- */
+  --max-prose: 680px;
+  --max-content: 1200px;
+  --max-wide:    1440px;
+}
+
+/* ============================================================
+   Reset + base
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+img, svg { display: block; max-width: 100%; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+a { color: var(--c-ink); text-decoration-thickness: 1px; text-underline-offset: 3px; transition: color var(--t-fast) var(--ease-out); }
+a:hover { color: var(--c-sky-ink); }
+
+/* ============================================================
+   Type utilities — role-named
+   ============================================================ */
+.t-mega     { font-family: var(--font-display); font-weight: 500; font-size: clamp(120px, 18vw, 300px); line-height: 1.02; letter-spacing: -0.012em; }
+.t-display-xl { font-family: var(--font-display); font-weight: 500; font-size: clamp(80px, 10vw, 180px); line-height: 1.04; letter-spacing: -0.01em; }
+.t-display-lg { font-family: var(--font-display); font-weight: 500; font-size: clamp(56px, 7vw, 120px); line-height: 1.06; letter-spacing: -0.008em; }
+.t-display-md { font-family: var(--font-display); font-weight: 500; font-size: clamp(40px, 5vw, 76px); line-height: 1.1; letter-spacing: -0.006em; }
+.t-display-sm { font-family: var(--font-display); font-weight: 500; font-size: clamp(32px, 4vw, 56px); line-height: 1.15; letter-spacing: -0.004em; }
+
+.t-h1 { font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-4xl); line-height: 1.15; letter-spacing: -0.008em; }
+.t-h2 { font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-3xl); line-height: 1.2; letter-spacing: -0.005em; }
+.t-h3 { font-family: var(--font-serif); font-weight: 500; font-size: var(--fs-2xl); line-height: 1.3; letter-spacing: 0; }
+.t-h4 { font-family: var(--font-sans);  font-weight: 500; font-size: var(--fs-xl);  line-height: var(--lh-xl); }
+.t-h5 { font-family: var(--font-sans);  font-weight: 500; font-size: var(--fs-lg);  line-height: var(--lh-lg); }
+
+.t-lead  { font-family: var(--font-sans); font-weight: 400; font-size: var(--fs-xl); line-height: 1.5; color: var(--c-ink-2); }
+.t-body  { font-family: var(--font-sans); font-weight: 400; font-size: var(--fs-body); line-height: var(--lh-body); }
+.t-small { font-family: var(--font-sans); font-weight: 400; font-size: var(--fs-sm);   line-height: var(--lh-sm); }
+.t-caption { font-family: var(--font-sans); font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--c-ink-3); }
+
+.t-eyebrow {
+  font-family: var(--font-mono); font-size: var(--fs-xs); line-height: var(--lh-xs);
+  letter-spacing: 0.14em; text-transform: uppercase; font-weight: 400; color: var(--c-ink-3);
+}
+.t-mono     { font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.t-italic   { font-style: italic; }
+.t-serif-italic { font-family: var(--font-serif); font-style: italic; font-weight: 400; }
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+.container { max-width: var(--max-content); margin-inline: auto; padding-inline: var(--s-8); }
+.wide      { max-width: var(--max-wide);    margin-inline: auto; padding-inline: var(--s-8); }
+.prose     { max-width: var(--max-prose); }
+.hairline  { border: 0; border-top: var(--bd-hairline); margin: 0; }
+.sr-only   { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+/* ============================================================
+   Buttons — Haus: pill, ink-primary, mint optional
+   ============================================================ */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: 14px 24px; border-radius: var(--r-pill);
+  font-family: var(--font-sans); font-size: var(--fs-sm); font-weight: 500;
+  letter-spacing: 0.01em; transition: all var(--t-base) var(--ease-out);
+  cursor: pointer; border: 1.5px solid transparent; text-decoration: none;
+}
+.btn--primary { background: var(--c-ink); color: #fff; border-color: var(--c-ink); }
+.btn--primary:hover { background: var(--c-ink-2); transform: translateY(-1px); box-shadow: var(--sh-2); }
+.btn--secondary { background: transparent; color: var(--c-ink); border-color: var(--c-ink); }
+.btn--secondary:hover { background: var(--c-ink); color: #fff; }
+.btn--mint { background: var(--c-mint); color: var(--c-ink); border-color: var(--c-mint); border-radius: var(--r-sm); }
+.btn--mint:hover { filter: brightness(0.95); transform: translateY(-1px); }
+.btn--ghost { background: transparent; color: var(--c-ink); border-color: transparent; }
+.btn--ghost:hover { background: var(--c-paper-2); }
+.btn--sm { padding: 10px 18px; font-size: var(--fs-xs); }
+.btn--lg { padding: 18px 32px; font-size: var(--fs-body); }
