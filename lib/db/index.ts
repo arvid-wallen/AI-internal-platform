@@ -290,3 +290,204 @@ function pickMark(slug: string): string {
   for (const c of slug) h = (h * 31 + c.charCodeAt(0)) | 0;
   return MARKS[Math.abs(h) % MARKS.length];
 }
+
+// ============ Daily portfolio (cost per day, stacked by provider) ============
+
+export interface PortfolioDayRow {
+  date: string;
+  cost_sek: number;
+  tokens: number;
+  byProvider: { anthropic: number; openai: number; google: number };
+}
+
+export async function getDailyPortfolio(
+  days = 60,
+): Promise<PortfolioDayRow[]> {
+  if (!isSupabaseConfigured()) {
+    const { DAILY_PORTFOLIO } = await import("@/lib/data");
+    return DAILY_PORTFOLIO.slice(-days);
+  }
+  const supabase = await createSupabaseServer();
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - days);
+  const { data } = await supabase
+    .from("token_usage_daily")
+    .select("usage_date, cost_sek, input_tokens, output_tokens, provider:ai_providers(slug)")
+    .gte("usage_date", since.toISOString().slice(0, 10))
+    .order("usage_date");
+
+  const byDate = new Map<string, PortfolioDayRow>();
+  for (const r of (data ?? []) as Array<{
+    usage_date: string;
+    cost_sek: number | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    provider: { slug?: "anthropic" | "openai" | "google" } | null;
+  }>) {
+    const row =
+      byDate.get(r.usage_date) ??
+      {
+        date: r.usage_date,
+        cost_sek: 0,
+        tokens: 0,
+        byProvider: { anthropic: 0, openai: 0, google: 0 },
+      };
+    const cost = Number(r.cost_sek ?? 0);
+    const tokens = (r.input_tokens ?? 0) + (r.output_tokens ?? 0);
+    row.cost_sek += cost;
+    row.tokens += tokens;
+    const slug = r.provider?.slug;
+    if (slug) row.byProvider[slug] += cost;
+    byDate.set(r.usage_date, row);
+  }
+  return [...byDate.values()];
+}
+
+// ============ Top N projects by current-month AI cost ============
+
+export interface TopProjectRow {
+  project_id: string;
+  project_slug: string;
+  project_name: string;
+  customer_name: string;
+  monthly_revenue: number;
+  ai_cost: number;
+  infra_cost: number;
+  active_model_id: string;
+  active_model_display: string;
+  active_model_provider: "anthropic" | "openai" | "google";
+}
+
+export async function getTopProjectsByAICost(
+  limit = 6,
+): Promise<TopProjectRow[]> {
+  if (!isSupabaseConfigured()) {
+    const data = await import("@/lib/data");
+    return [...data.PROJECTS]
+      .sort((a, b) => b.ai_cost - a.ai_cost)
+      .slice(0, limit)
+      .map((p) => {
+        const c = data.customerById(p.customer_id);
+        const m = data.modelById(p.active_model);
+        return {
+          project_id: p.id,
+          project_slug: p.slug,
+          project_name: p.name,
+          customer_name: c?.name ?? "",
+          monthly_revenue: p.monthly_revenue,
+          ai_cost: p.ai_cost,
+          infra_cost: p.infra_cost,
+          active_model_id: m?.id ?? "",
+          active_model_display: m?.display ?? "",
+          active_model_provider: m?.provider ?? "anthropic",
+        };
+      });
+  }
+
+  const supabase = await createSupabaseServer();
+  const thisMonth = new Date();
+  thisMonth.setUTCDate(1);
+  const monthStart = thisMonth.toISOString().slice(0, 10);
+
+  // Sum cost per project for current month.
+  const { data: usageRows } = await supabase
+    .from("token_usage_daily")
+    .select("project_id, cost_sek")
+    .gte("usage_date", monthStart)
+    .not("project_id", "is", null);
+
+  const costByProject = new Map<string, number>();
+  for (const r of (usageRows ?? []) as Array<{
+    project_id: string | null;
+    cost_sek: number | null;
+  }>) {
+    if (!r.project_id) continue;
+    costByProject.set(
+      r.project_id,
+      (costByProject.get(r.project_id) ?? 0) + Number(r.cost_sek ?? 0),
+    );
+  }
+
+  const topIds = [...costByProject.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => id);
+
+  if (topIds.length === 0) return [];
+
+  const { data: projectRows } = await supabase
+    .from("projects")
+    .select(`id, slug, name, monthly_revenue_sek, monthly_infra_budget_sek,
+             customer:customers(name),
+             active_model:project_models!inner(
+               model:ai_models(model_id, display_name, provider:ai_providers(slug))
+             )`)
+    .in("id", topIds)
+    .eq("active_model.is_active", true);
+
+  type JoinedProject = {
+    id: string;
+    slug: string;
+    name: string;
+    monthly_revenue_sek: number | null;
+    monthly_infra_budget_sek: number | null;
+    customer: { name?: string | null } | { name?: string | null }[] | null;
+    active_model:
+      | Array<{
+          model?: {
+            model_id?: string | null;
+            display_name?: string | null;
+            provider?: { slug?: "anthropic" | "openai" | "google" } | null;
+          } | null;
+        }>
+      | null;
+  };
+
+  return (projectRows as unknown as JoinedProject[] | null ?? [])
+    .map((r) => {
+      const am = Array.isArray(r.active_model) ? r.active_model[0] : null;
+      const model = am?.model;
+      const customer = Array.isArray(r.customer) ? r.customer[0] : r.customer;
+      return {
+        project_id: r.id,
+        project_slug: r.slug,
+        project_name: r.name,
+        customer_name: customer?.name ?? "",
+        monthly_revenue: Number(r.monthly_revenue_sek ?? 0),
+        ai_cost: costByProject.get(r.id) ?? 0,
+        infra_cost: Number(r.monthly_infra_budget_sek ?? 0),
+        active_model_id: model?.model_id ?? "",
+        active_model_display: model?.display_name ?? "",
+        active_model_provider: model?.provider?.slug ?? "anthropic",
+      } satisfies TopProjectRow;
+    })
+    .sort((a, b) => b.ai_cost - a.ai_cost);
+}
+
+// ============ Recent updates feed ============
+
+export interface UpdateRow {
+  when: string;
+  actor: string;
+  kind: string;
+  project_id: string;
+  project_name: string;
+  body: string;
+}
+
+export async function getRecentUpdates(limit = 6): Promise<UpdateRow[]> {
+  // No `updates` table yet — surface mock-style activity from model_switches +
+  // incidents + recent invoice events. For now, fall back to lib/data.UPDATES.
+  const data = await import("@/lib/data");
+  return data.UPDATES.slice(0, limit).map((u) => {
+    const p = data.projectById(u.project);
+    return {
+      when: u.when,
+      actor: u.actor,
+      kind: u.kind,
+      project_id: u.project,
+      project_name: p?.name ?? "",
+      body: u.body,
+    };
+  });
+}

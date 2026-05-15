@@ -1,13 +1,14 @@
 import Link from "next/link";
 import {
-  computePortfolio,
-  DAILY_PORTFOLIO,
-  PROJECTS,
-  UPDATES,
-  customerById,
-  modelById,
-  projectById,
-} from "@/lib/data";
+  getDailyPortfolio,
+  getPortfolio,
+  getRecentUpdates,
+  getTopProjectsByAICost,
+} from "@/lib/db";
+
+// Always server-render — portfolio totals + token usage are stale within
+// minutes of every cron sync.
+export const dynamic = "force-dynamic";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import {
@@ -32,8 +33,7 @@ const NEEDS_ATTENTION: AttentionCard[] = [
     kind: "critical",
     icon: "Alert",
     title: "Klarna Dispute Triage — kostnadsspike 4.2×",
-    desc:
-      "Opus 4.7-rollout har driftat AI-kostnaden från 38k → 162k kr/mån. Marginalen är nu negativ.",
+    desc: "Opus 4.7-rollout har driftat AI-kostnaden från 38k → 162k kr/mån. Marginalen är nu negativ.",
     meta: ["p-klarna-dispute", "Updated 09:12"],
     href: "/projects/p-klarna-dispute",
   },
@@ -41,8 +41,7 @@ const NEEDS_ATTENTION: AttentionCard[] = [
     kind: "critical",
     icon: "Receipt",
     title: "Faktura F-2603-097 är förfallen",
-    desc:
-      "Klarna · Dispute Triage · april. 12 dagar över förfallodatum.",
+    desc: "Klarna · Dispute Triage · april. 12 dagar över förfallodatum.",
     meta: ["Klarna · 240 000 kr", "Förfall 2026-04-30"],
     href: "/billing",
   },
@@ -50,8 +49,7 @@ const NEEDS_ATTENTION: AttentionCard[] = [
     kind: "warn",
     icon: "Server",
     title: "Google Cloud Billing — 2 workspaces saknar label",
-    desc:
-      "Vertex AI-kostnader för 2 SKU:er går inte att attributera till ett projekt.",
+    desc: "Vertex AI-kostnader för 2 SKU:er går inte att attributera till ett projekt.",
     meta: ["google sync · 04:33"],
     href: "/settings",
   },
@@ -59,8 +57,7 @@ const NEEDS_ATTENTION: AttentionCard[] = [
     kind: "warn",
     icon: "Pause",
     title: "Northvolt QA Assistant pausad i 28 dagar",
-    desc:
-      "Ingen aktivitet sedan offboarding-diskussion 17 apr. Beslut behövs.",
+    desc: "Ingen aktivitet sedan offboarding-diskussion 17 apr. Beslut behövs.",
     meta: ["p-nv-qa"],
     href: "/projects/p-nv-qa",
   },
@@ -68,29 +65,31 @@ const NEEDS_ATTENTION: AttentionCard[] = [
     kind: "info",
     icon: "Sparkles",
     title: "Föreslagen besparing — Klarna Dispute",
-    desc:
-      "Byt Opus 4.7 → Sonnet 4.5 + reasoning_effort=high. Estimerad besparing 108 000 kr/mån.",
+    desc: "Byt Opus 4.7 → Sonnet 4.5 + reasoning_effort=high. Estimerad besparing 108 000 kr/mån.",
     meta: ["AI suggestion · 09:14"],
     href: "/projects/p-klarna-dispute",
   },
 ];
 
-export default function DashboardPage() {
-  const portfolio = computePortfolio();
+export default async function DashboardPage() {
+  // Server-side parallel fetch — everything reads from lib/db which falls
+  // back to mock data when Supabase isn't configured.
+  const [portfolio, daily, topByCost, updates] = await Promise.all([
+    getPortfolio(),
+    getDailyPortfolio(60),
+    getTopProjectsByAICost(6),
+    getRecentUpdates(6),
+  ]);
 
-  const last30 = DAILY_PORTFOLIO.slice(-30);
-  const prev30 = DAILY_PORTFOLIO.slice(-60, -30);
+  const last30 = daily.slice(-30);
+  const prev30 = daily.slice(-60, -30);
   const last30Cost = last30.map((d) => d.cost_sek);
   const sum = (arr: number[]) => arr.reduce((s, x) => s + x, 0);
   const costThis = sum(last30Cost);
   const costPrev = sum(prev30.map((d) => d.cost_sek));
   const costDelta = costPrev ? (costThis - costPrev) / costPrev : 0;
 
-  const topByCost = [...PROJECTS]
-    .sort((a, b) => b.ai_cost - a.ai_cost)
-    .slice(0, 6);
-
-  const stack = DAILY_PORTFOLIO.slice(-14).map((d) => ({
+  const stack = daily.slice(-14).map((d) => ({
     label: fmt.dayShort(d.date),
     parts: {
       anthropic: d.byProvider.anthropic,
@@ -108,7 +107,8 @@ export default function DashboardPage() {
             God morgon, <em>Arvid.</em>
           </h1>
           <p className="page-sub">
-            17 projekt över 9 kunder. 5 saker behöver uppmärksamhet idag.
+            {portfolio.project_count} projekt över {portfolio.customer_count} kunder.
+            5 saker behöver uppmärksamhet idag.
           </p>
         </div>
         <div className="actions">
@@ -236,33 +236,27 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {topByCost.map((p) => {
-                  const c = customerById(p.customer_id);
-                  const m = modelById(p.active_model);
                   const margin =
                     p.monthly_revenue - p.ai_cost - p.infra_cost;
                   const marginPct = p.monthly_revenue
                     ? margin / p.monthly_revenue
                     : -1;
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.project_id}>
                       <td>
                         <Link
-                          href={`/projects/${p.id}`}
+                          href={`/projects/${p.project_id}`}
                           style={{ display: "block", textDecoration: "none" }}
                         >
-                          <div className="strong">{p.name}</div>
-                          <div className="sub">{c?.name}</div>
+                          <div className="strong">{p.project_name}</div>
+                          <div className="sub">{p.customer_name}</div>
                         </Link>
                       </td>
                       <td>
-                        {m && (
-                          <>
-                            <div>
-                              <ProviderChip provider={m.provider} />
-                            </div>
-                            <div className="sub">{m.display}</div>
-                          </>
-                        )}
+                        <div>
+                          <ProviderChip provider={p.active_model_provider} />
+                        </div>
+                        <div className="sub">{p.active_model_display}</div>
                       </td>
                       <td className="num">{fmt.ksek(p.monthly_revenue)}</td>
                       <td className="num">{fmt.ksek(p.ai_cost)}</td>
@@ -322,21 +316,15 @@ export default function DashboardPage() {
           <div className="card">
             <SectionHead title="Senaste aktivitet" />
             <div className="timeline" style={{ marginTop: 4 }}>
-              {UPDATES.slice(0, 6).map((u, i) => {
-                const p = projectById(u.project);
-                return (
-                  <div
-                    key={i}
-                    className={"tl-item" + (i > 2 ? " past" : "")}
-                  >
-                    <div className="tl-time">
-                      {u.when} · {u.actor}
-                    </div>
-                    <div className="tl-title">{p?.name ?? "—"}</div>
-                    <div className="tl-desc">{u.body}</div>
+              {updates.map((u, i) => (
+                <div key={i} className={"tl-item" + (i > 2 ? " past" : "")}>
+                  <div className="tl-time">
+                    {u.when} · {u.actor}
                   </div>
-                );
-              })}
+                  <div className="tl-title">{u.project_name}</div>
+                  <div className="tl-desc">{u.body}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -4,7 +4,8 @@
 -- Extensions
 create extension if not exists pgcrypto;
 create extension if not exists pg_trgm;
-create extension if not exists vault with schema vault;
+-- supabase_vault is opt-in — enable via Supabase Studio → Database → Extensions
+-- to store integrations_credentials.vault_secret_id encrypted secrets.
 
 -- ============================================================
 -- Helper: set updated_at on UPDATE

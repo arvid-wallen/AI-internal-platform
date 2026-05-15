@@ -142,7 +142,7 @@ insert into public.notes (parent_type, parent_id, category, title, content, pinn
 insert into public.integrations_credentials (provider_slug, metadata, last_synced_at, last_sync_status) values
   ('anthropic',  '{"workspace_map": {}}'::jsonb, null, 'ok'),
   ('openai',     '{"project_map": {}}'::jsonb,   null, 'ok'),
-  ('google',     '{}'::jsonb,                    null, 'warn'),
+  ('google',     '{}'::jsonb,                    null, 'partial'),
   ('fortnox',    '{}'::jsonb,                    null, 'ok'),
   ('github',     '{}'::jsonb,                    null, 'ok'),
   ('vercel',     '{}'::jsonb,                    null, 'ok'),
