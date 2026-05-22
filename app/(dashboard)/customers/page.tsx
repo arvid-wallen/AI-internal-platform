@@ -1,11 +1,23 @@
-import Link from "next/link";
-import { CUSTOMERS, projectsByCustomer } from "@/lib/data";
-import { fmt } from "@/lib/format";
+import { listCustomers, listProjects } from "@/lib/db";
 import { Icons } from "@/components/icons";
-import { ClassPill, StatusPill } from "@/components/ui";
 import { CustomersFilter } from "./filter";
 
-export default function CustomersPage() {
+export const dynamic = "force-dynamic";
+
+export default async function CustomersPage() {
+  const [customers, projects] = await Promise.all([
+    listCustomers(),
+    listProjects(),
+  ]);
+
+  const counts = new Map<string, { total: number; live: number }>();
+  for (const p of projects) {
+    const e = counts.get(p.customer_id) ?? { total: 0, live: 0 };
+    e.total += 1;
+    if (p.status === "live") e.live += 1;
+    counts.set(p.customer_id, e);
+  }
+
   return (
     <div className="page">
       <div className="page-head">
@@ -29,8 +41,8 @@ export default function CustomersPage() {
       </div>
 
       <CustomersFilter
-        customers={CUSTOMERS.map((c) => {
-          const ps = projectsByCustomer(c.id);
+        customers={customers.map((c) => {
+          const e = counts.get(c.id) ?? { total: 0, live: 0 };
           return {
             id: c.id,
             name: c.name,
@@ -41,8 +53,8 @@ export default function CustomersPage() {
             mrr: c.mrr,
             mark: c.mark,
             init: c.init,
-            project_count: ps.length,
-            live_count: ps.filter((p) => p.status === "live").length,
+            project_count: e.total,
+            live_count: e.live,
           };
         })}
       />

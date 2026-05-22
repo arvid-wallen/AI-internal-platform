@@ -1,19 +1,22 @@
 import {
-  DAILY_PORTFOLIO,
-  DAILY_USAGE,
-  PROJECTS,
-  modelById,
-} from "@/lib/data";
+  getDailyPortfolio,
+  getPortfolioTokenTotals,
+  getTopProjectsByAICost,
+} from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { KpiCard, SectionHead } from "@/components/ui";
 import { StackedBarChart } from "@/components/charts";
 
-export default function TokensPage() {
-  const totalCost = DAILY_USAGE.reduce((s, u) => s + u.cost_sek, 0);
-  const totalIn = DAILY_USAGE.reduce((s, u) => s + u.tokens_in, 0);
-  const totalOut = DAILY_USAGE.reduce((s, u) => s + u.tokens_out, 0);
+export const dynamic = "force-dynamic";
 
-  const stack = DAILY_PORTFOLIO.slice(-30).map((d) => ({
+export default async function TokensPage() {
+  const [daily, totals, top] = await Promise.all([
+    getDailyPortfolio(60),
+    getPortfolioTokenTotals(60),
+    getTopProjectsByAICost(10),
+  ]);
+
+  const stack = daily.slice(-30).map((d) => ({
     label: fmt.dayShort(d.date),
     parts: {
       anthropic: d.byProvider.anthropic,
@@ -21,15 +24,6 @@ export default function TokensPage() {
       google: d.byProvider.google,
     },
   }));
-
-  // top 10 projects by 60d cost
-  const byProject = new Map<string, number>();
-  for (const u of DAILY_USAGE) {
-    byProject.set(u.project_id, (byProject.get(u.project_id) ?? 0) + u.cost_sek);
-  }
-  const topProjects = [...byProject.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
 
   return (
     <div className="page">
@@ -47,18 +41,22 @@ export default function TokensPage() {
         <KpiCard
           icon="Coins"
           label="AI 60d totalt"
-          value={fmt.ksek(totalCost)}
+          value={fmt.ksek(totals.cost_sek)}
         />
-        <KpiCard icon="Bolt" label="Tokens in" value={fmt.tokens(totalIn)} />
+        <KpiCard
+          icon="Bolt"
+          label="Tokens in"
+          value={fmt.tokens(totals.tokens_in)}
+        />
         <KpiCard
           icon="Bolt"
           label="Tokens ut"
-          value={fmt.tokens(totalOut)}
+          value={fmt.tokens(totals.tokens_out)}
         />
         <KpiCard
           icon="Sparkles"
           label="Snitt/dag"
-          value={fmt.ksek(totalCost / Math.max(1, DAILY_PORTFOLIO.length))}
+          value={fmt.ksek(totals.cost_sek / Math.max(1, daily.length))}
         />
       </div>
 
@@ -81,28 +79,31 @@ export default function TokensPage() {
 
       <div className="card flush mt-4">
         <div style={{ padding: "16px 18px 0" }}>
-          <SectionHead title="Topp 10 projekt på AI-spend (60d)" />
+          <SectionHead title="Topp 10 projekt på AI-spend" />
         </div>
         <table className="tbl">
           <thead>
             <tr>
               <th>Projekt</th>
               <th>Modell</th>
-              <th className="num">60d kostnad</th>
+              <th className="num">AI-kostnad mån</th>
             </tr>
           </thead>
           <tbody>
-            {topProjects.map(([pid, cost]) => {
-              const p = PROJECTS.find((x) => x.id === pid);
-              const m = p ? modelById(p.active_model) : undefined;
-              return (
-                <tr key={pid} className="no-hover">
-                  <td className="strong">{p?.name ?? pid}</td>
-                  <td>{m?.display ?? "—"}</td>
-                  <td className="num">{fmt.ksek(cost)}</td>
-                </tr>
-              );
-            })}
+            {top.map((t) => (
+              <tr key={t.project_id} className="no-hover">
+                <td className="strong">{t.project_name}</td>
+                <td>{t.active_model_display || "—"}</td>
+                <td className="num">{fmt.ksek(t.ai_cost)}</td>
+              </tr>
+            ))}
+            {top.length === 0 && (
+              <tr className="no-hover">
+                <td colSpan={3} className="empty">
+                  Ingen token-användning registrerad ännu.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

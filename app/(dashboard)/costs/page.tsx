@@ -1,16 +1,16 @@
-import {
-  DEPENDENCIES,
-  PROJECTS,
-  computePortfolio,
-  projectById,
-} from "@/lib/data";
+import { getPortfolio, listDependencies } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { KpiCard, SectionHead } from "@/components/ui";
 
-export default function CostsPage() {
-  const portfolio = computePortfolio();
+export const dynamic = "force-dynamic";
+
+export default async function CostsPage() {
+  const [portfolio, deps] = await Promise.all([
+    getPortfolio(),
+    listDependencies(),
+  ]);
   const byVendor = new Map<string, number>();
-  for (const d of DEPENDENCIES) {
+  for (const d of deps) {
     byVendor.set(d.vendor, (byVendor.get(d.vendor) ?? 0) + d.monthly_sek);
   }
   const vendorRows = [...byVendor.entries()]
@@ -76,6 +76,13 @@ export default function CostsPage() {
                 </tr>
               );
             })}
+            {vendorRows.length === 0 && (
+              <tr className="no-hover">
+                <td colSpan={3} className="empty">
+                  Inga registrerade leverantörskostnader.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

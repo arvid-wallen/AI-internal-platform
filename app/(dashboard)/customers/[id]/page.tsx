@@ -1,20 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  INVOICES,
-  customerById,
-  modelById,
-  projectsByCustomer,
-} from "@/lib/data";
+  getCustomer,
+  listInvoicesForCustomer,
+  listModels,
+  listProjectsForCustomer,
+} from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
-import {
-  ClassPill,
-  KpiCard,
-  ProviderChip,
-  SectionHead,
-  StatusPill,
-} from "@/components/ui";
+import { ClassPill, KpiCard, SectionHead, StatusPill } from "@/components/ui";
+
+export const dynamic = "force-dynamic";
 
 export default async function CustomerDetailPage({
   params,
@@ -22,11 +18,15 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const c = customerById(id);
+  const c = await getCustomer(id);
   if (!c) notFound();
 
-  const ps = projectsByCustomer(c.id);
-  const invs = INVOICES.filter((i) => i.customer_id === c.id);
+  const [ps, invs, models] = await Promise.all([
+    listProjectsForCustomer(c.id),
+    listInvoicesForCustomer(c.id),
+    listModels(),
+  ]);
+  const modelById = new Map(models.map((m) => [m.id, m]));
 
   const totalRev = ps.reduce((s, p) => s + p.monthly_revenue, 0);
   const totalAi = ps.reduce((s, p) => s + p.ai_cost, 0);
@@ -93,7 +93,7 @@ export default async function CustomerDetailPage({
             </thead>
             <tbody>
               {ps.map((p) => {
-                const m = modelById(p.active_model);
+                const m = modelById.get(p.active_model);
                 return (
                   <tr key={p.id}>
                     <td>
@@ -164,6 +164,13 @@ export default async function CustomerDetailPage({
                   </td>
                 </tr>
               ))}
+              {invs.length === 0 && (
+                <tr className="no-hover">
+                  <td colSpan={5} className="empty">
+                    Inga fakturor synkade ännu.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
-import { depsFor, projectById } from "@/lib/data";
+import { getProject, listDependenciesForProject } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { MarginBar, Pill, SectionHead } from "@/components/ui";
 import { Donut } from "@/components/charts";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectCostsPage({
   params,
@@ -10,9 +12,9 @@ export default async function ProjectCostsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const deps = depsFor(p.id);
+  const deps = await listDependenciesForProject(p.id);
   const depsTotal = deps.reduce((s, d) => s + d.monthly_sek, 0);
 
   const breakdown = [
@@ -60,11 +62,16 @@ export default async function ProjectCostsPage({
                   <div className="right">
                     <div className="tnum strong">{fmt.ksek(b.value)}</div>
                     <div className="dim tnum" style={{ fontSize: 11 }}>
-                      {((b.value / total) * 100).toFixed(0)}%
+                      {total ? ((b.value / total) * 100).toFixed(0) : 0}%
                     </div>
                   </div>
                 </div>
               ))}
+              {breakdown.length === 0 && (
+                <div className="empty" style={{ padding: 14 }}>
+                  Ingen kostnad registrerad ännu.
+                </div>
+              )}
             </div>
           </div>
         </div>

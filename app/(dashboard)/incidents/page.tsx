@@ -1,10 +1,17 @@
 import Link from "next/link";
-import { INCIDENTS, projectById } from "@/lib/data";
+import { listIncidents, listProjects } from "@/lib/db";
 import { Pill, SectionHead, StatusPill } from "@/components/ui";
 
-export default function IncidentsPage() {
-  const ongoing = INCIDENTS.filter((i) => !i.resolved);
-  const resolved = INCIDENTS.filter((i) => i.resolved);
+export const dynamic = "force-dynamic";
+
+export default async function IncidentsPage() {
+  const [incidents, projects] = await Promise.all([
+    listIncidents(),
+    listProjects(),
+  ]);
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  const ongoing = incidents.filter((i) => !i.resolved);
+  const resolved = incidents.filter((i) => i.resolved);
 
   return (
     <div className="page">
@@ -35,7 +42,7 @@ export default function IncidentsPage() {
             </thead>
             <tbody>
               {ongoing.map((i) => {
-                const p = projectById(i.project_id);
+                const p = projectById.get(i.project_id);
                 return (
                   <tr key={i.id} className="no-hover">
                     <td className="tnum">{i.id}</td>
@@ -78,7 +85,7 @@ export default function IncidentsPage() {
           </thead>
           <tbody>
             {resolved.map((i) => {
-              const p = projectById(i.project_id);
+              const p = projectById.get(i.project_id);
               return (
                 <tr key={i.id} className="no-hover">
                   <td className="tnum">{i.id}</td>
@@ -93,6 +100,13 @@ export default function IncidentsPage() {
                 </tr>
               );
             })}
+            {resolved.length === 0 && (
+              <tr className="no-hover">
+                <td colSpan={5} className="empty">
+                  Inga incidenter registrerade.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

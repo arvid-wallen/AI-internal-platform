@@ -1,11 +1,21 @@
-import { PROJECTS, customerById, modelById } from "@/lib/data";
+import { listCustomers, listModels, listProjects } from "@/lib/db";
 import { Icons } from "@/components/icons";
 import { ProjectsFilter } from "./filter";
 
-export default function ProjectsPage() {
-  const rows = PROJECTS.map((p) => {
-    const c = customerById(p.customer_id);
-    const m = modelById(p.active_model);
+export const dynamic = "force-dynamic";
+
+export default async function ProjectsPage() {
+  const [projects, customers, models] = await Promise.all([
+    listProjects(),
+    listCustomers(),
+    listModels(),
+  ]);
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const modelById = new Map(models.map((m) => [m.id, m]));
+
+  const rows = projects.map((p) => {
+    const c = customerById.get(p.customer_id);
+    const m = modelById.get(p.active_model);
     return {
       id: p.id,
       name: p.name,

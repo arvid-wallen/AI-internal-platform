@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  NOTES,
-  customerById,
-  depsFor,
-  modelById,
-  projectById,
-} from "@/lib/data";
+  getCustomer,
+  getProject,
+  listDependenciesForProject,
+  listNotesForProject,
+} from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import { Pill, StatusPill } from "@/components/ui";
 import { TabsClient } from "./tabs-client";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectDetailLayout({
   children,
@@ -20,12 +21,13 @@ export default async function ProjectDetailLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const c = customerById(p.customer_id);
-  // const m = modelById(p.active_model);
-  const deps = depsFor(p.id);
-  const notes = NOTES.filter((n) => n.parent === p.id);
+  const [c, deps, notes] = await Promise.all([
+    getCustomer(p.customer_id),
+    listDependenciesForProject(p.id),
+    listNotesForProject(p.id),
+  ]);
 
   const tabs = [
     { id: "overview", label: "Overview", href: `/projects/${p.id}` },

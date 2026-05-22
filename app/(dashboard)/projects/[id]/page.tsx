@@ -1,18 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  UPDATES,
-  customerById,
-  dailyForProject,
-  depsFor,
-  modelById,
-  projectById,
-} from "@/lib/data";
+  getCustomer,
+  getModel,
+  getProject,
+  listDailyUsageForProject,
+  listDependenciesForProject,
+  listUpdatesForProject,
+} from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import {
   KpiCard,
-  MarginBar,
   Pill,
   ProviderChip,
   SectionHead,
@@ -20,22 +19,27 @@ import {
 } from "@/components/ui";
 import { LineChart } from "@/components/charts";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectOverviewPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const c = customerById(p.customer_id);
-  const m = modelById(p.active_model);
-  const usage = dailyForProject(p.id);
+  const [c, m, usage, deps, updates] = await Promise.all([
+    getCustomer(p.customer_id),
+    p.active_model ? getModel(p.active_model) : Promise.resolve(null),
+    listDailyUsageForProject(p.id),
+    listDependenciesForProject(p.id),
+    listUpdatesForProject(p.id),
+  ]);
   const last14 = usage.slice(-14);
   const sum14 = last14.reduce((s, u) => s + u.cost_sek, 0);
   const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
   const marginPct = p.monthly_revenue ? margin / p.monthly_revenue : 0;
-  const deps = depsFor(p.id);
 
   const chart = usage
     .slice(-30)
@@ -243,20 +247,18 @@ export default async function ProjectOverviewPage({
           <div className="card">
             <SectionHead title="Senaste händelser" />
             <div className="timeline">
-              {UPDATES.filter((u) => u.project === p.id)
-                .slice(0, 5)
-                .map((u, i) => (
-                  <div
-                    key={i}
-                    className={"tl-item" + (i > 1 ? " past" : "")}
-                  >
-                    <div className="tl-time">
-                      {u.when} · {u.actor}
-                    </div>
-                    <div className="tl-title">{u.body}</div>
+              {updates.slice(0, 5).map((u, i) => (
+                <div
+                  key={i}
+                  className={"tl-item" + (i > 1 ? " past" : "")}
+                >
+                  <div className="tl-time">
+                    {u.when} · {u.actor}
                   </div>
-                ))}
-              {UPDATES.filter((u) => u.project === p.id).length === 0 && (
+                  <div className="tl-title">{u.body}</div>
+                </div>
+              ))}
+              {updates.length === 0 && (
                 <div className="empty" style={{ padding: 6 }}>
                   Inga händelser ännu.
                 </div>

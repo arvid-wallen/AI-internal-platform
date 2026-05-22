@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
-import { depsFor, projectById } from "@/lib/data";
+import { getProject, listDependenciesForProject } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import { Pill, SectionHead } from "@/components/ui";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectDepsPage({
   params,
@@ -10,9 +12,9 @@ export default async function ProjectDepsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const deps = depsFor(p.id);
+  const deps = await listDependenciesForProject(p.id);
   const total = deps.reduce((s, d) => s + d.monthly_sek, 0);
 
   return (

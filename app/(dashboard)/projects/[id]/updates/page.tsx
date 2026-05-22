@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
-import { UPDATES, projectById } from "@/lib/data";
+import { getProject, listUpdatesForProject } from "@/lib/db";
 import { SectionHead } from "@/components/ui";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectUpdatesPage({
   params,
@@ -8,9 +10,9 @@ export default async function ProjectUpdatesPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const list = UPDATES.filter((u) => u.project === p.id);
+  const list = await listUpdatesForProject(p.id);
   return (
     <div className="card">
       <SectionHead title="Updates" sub={`${list.length} händelser`} />

@@ -1,8 +1,16 @@
-import { INTEGRATIONS, SYNC_RUNS, TEAM } from "@/lib/data";
+import { listIntegrations, listSyncRuns, listTeam } from "@/lib/db";
 import { Icons } from "@/components/icons";
-import { Pill, SectionHead, StatusPill } from "@/components/ui";
+import { Pill, SectionHead } from "@/components/ui";
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const [integrations, syncRuns, team] = await Promise.all([
+    listIntegrations(),
+    listSyncRuns(),
+    listTeam(),
+  ]);
+
   return (
     <div className="page">
       <div className="page-head">
@@ -20,10 +28,10 @@ export default function SettingsPage() {
           <div className="card">
             <SectionHead
               title="Integrationer"
-              sub={`${INTEGRATIONS.length} konfigurerade · dagliga syncs via Vercel Cron`}
+              sub={`${integrations.length} konfigurerade · dagliga syncs via Vercel Cron`}
             />
             <div className="set-list">
-              {INTEGRATIONS.map((it) => (
+              {integrations.map((it) => (
                 <div key={it.id} className="set-row">
                   <div className="ic-wrap">
                     <Icons.Server size={16} />
@@ -53,6 +61,11 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ))}
+              {integrations.length === 0 && (
+                <div className="empty" style={{ padding: 14 }}>
+                  Inga integrationer konfigurerade.
+                </div>
+              )}
             </div>
           </div>
 
@@ -69,7 +82,7 @@ export default function SettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {SYNC_RUNS.map((r) => (
+                {syncRuns.map((r) => (
                   <tr key={r.id} className="no-hover">
                     <td className="tnum">{r.at}</td>
                     <td>{r.integration}</td>
@@ -90,6 +103,13 @@ export default function SettingsPage() {
                     <td className="tnum num">{r.took}</td>
                   </tr>
                 ))}
+                {syncRuns.length === 0 && (
+                  <tr className="no-hover">
+                    <td colSpan={5} className="empty">
+                      Inga sync runs ännu.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -99,10 +119,10 @@ export default function SettingsPage() {
           <div className="card">
             <SectionHead
               title="Team"
-              sub={`${TEAM.length} medlemmar · @haus.se`}
+              sub={`${team.length} medlemmar · @haus.se`}
             />
             <div className="set-list">
-              {TEAM.map((u) => (
+              {team.map((u) => (
                 <div key={u.id} className="set-row">
                   <div
                     className={"avatar"}

@@ -1,12 +1,10 @@
 import { notFound } from "next/navigation";
-import {
-  dailyForProject,
-  modelById,
-  projectById,
-} from "@/lib/data";
+import { getProject, listDailyUsageForProject, listModels } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { KpiCard, SectionHead } from "@/components/ui";
 import { LineChart } from "@/components/charts";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectTokensPage({
   params,
@@ -14,9 +12,13 @@ export default async function ProjectTokensPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const usage = dailyForProject(p.id);
+  const [usage, models] = await Promise.all([
+    listDailyUsageForProject(p.id),
+    listModels(),
+  ]);
+  const modelById = new Map(models.map((m) => [m.id, m]));
   const lineCost = usage
     .slice(-30)
     .map((u) => ({ label: fmt.dayShort(u.date), v: u.cost_sek }));
@@ -85,7 +87,7 @@ export default async function ProjectTokensPage({
               .slice(-14)
               .reverse()
               .map((u, i) => {
-                const mo = modelById(u.model_id);
+                const mo = modelById.get(u.model_id);
                 return (
                   <tr key={i} className="no-hover">
                     <td className="tnum">{u.date}</td>
@@ -120,6 +122,13 @@ export default async function ProjectTokensPage({
                   </tr>
                 );
               })}
+            {usage.length === 0 && (
+              <tr className="no-hover">
+                <td colSpan={7} className="empty">
+                  Ingen token-användning registrerad ännu.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

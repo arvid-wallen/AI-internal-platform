@@ -1,28 +1,34 @@
 import {
-  CUSTOMERS,
-  INVOICES,
-  computePortfolio,
-  customerById,
-  projectById,
-} from "@/lib/data";
+  getPortfolio,
+  listCustomers,
+  listInvoices,
+  listProjects,
+} from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import { KpiCard, SectionHead, StatusPill } from "@/components/ui";
 
-export default function BillingPage() {
-  const portfolio = computePortfolio();
-  const paid = INVOICES.filter((i) => i.status === "paid").reduce(
-    (s, i) => s + i.amount,
-    0,
-  );
-  const sent = INVOICES.filter((i) => i.status === "sent").reduce(
-    (s, i) => s + i.amount,
-    0,
-  );
-  const overdue = INVOICES.filter((i) => i.status === "overdue").reduce(
-    (s, i) => s + i.amount,
-    0,
-  );
+export const dynamic = "force-dynamic";
+
+export default async function BillingPage() {
+  const [portfolio, invoices, customers, projects] = await Promise.all([
+    getPortfolio(),
+    listInvoices(),
+    listCustomers(),
+    listProjects(),
+  ]);
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+
+  const paid = invoices
+    .filter((i) => i.status === "paid")
+    .reduce((s, i) => s + i.amount, 0);
+  const sent = invoices
+    .filter((i) => i.status === "sent")
+    .reduce((s, i) => s + i.amount, 0);
+  const overdue = invoices
+    .filter((i) => i.status === "overdue")
+    .reduce((s, i) => s + i.amount, 0);
 
   return (
     <div className="page">
@@ -31,7 +37,7 @@ export default function BillingPage() {
           <div className="page-eyebrow">Finance</div>
           <h1 className="page-title">Billing &amp; Revenue</h1>
           <p className="page-sub">
-            Fortnox-spegling · {INVOICES.length} fakturor synkade.
+            Fortnox-spegling · {invoices.length} fakturor synkade.
           </p>
         </div>
         <div className="actions">
@@ -68,7 +74,7 @@ export default function BillingPage() {
 
       <div className="card flush mt-4">
         <div style={{ padding: "16px 18px 0" }}>
-          <SectionHead title="Fakturor" count={INVOICES.length} />
+          <SectionHead title="Fakturor" count={invoices.length} />
         </div>
         <table className="tbl">
           <thead>
@@ -83,9 +89,9 @@ export default function BillingPage() {
             </tr>
           </thead>
           <tbody>
-            {INVOICES.map((i) => {
-              const c = customerById(i.customer_id);
-              const p = projectById(i.project_id);
+            {invoices.map((i) => {
+              const c = customerById.get(i.customer_id);
+              const p = projectById.get(i.project_id);
               return (
                 <tr key={i.id} className="no-hover">
                   <td className="tnum">{i.id}</td>
@@ -100,6 +106,13 @@ export default function BillingPage() {
                 </tr>
               );
             })}
+            {invoices.length === 0 && (
+              <tr className="no-hover">
+                <td colSpan={7} className="empty">
+                  Inga fakturor synkade ännu.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

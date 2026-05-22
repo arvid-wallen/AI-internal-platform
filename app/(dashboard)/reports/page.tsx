@@ -1,40 +1,48 @@
-import {
-  PROJECTS,
-  customerById,
-  modelById,
-} from "@/lib/data";
+import { listCustomers, listModels, listProjects } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { MarginBar, SectionHead } from "@/components/ui";
 import { ScatterChart } from "@/components/charts";
 
-export default function ReportsPage() {
-  // Risk matrix: x = margin %, y = monthly spend (ai + infra)
-  const data = PROJECTS.filter((p) => p.monthly_revenue > 0).map((p) => {
-    const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
-    const marginPct = p.monthly_revenue ? margin / p.monthly_revenue : 0;
-    const spend = p.ai_cost + p.infra_cost;
-    const m = modelById(p.active_model);
-    const colorByProv: Record<string, string> = {
-      anthropic: "#FFC9A8",
-      openai: "#A9FCAE",
-      google: "#6EC1E4",
-    };
-    return {
-      label: p.name,
-      short: p.name
-        .split(" ")
-        .slice(0, 1)
-        .join("")
-        .slice(0, 3)
-        .toUpperCase(),
-      x: marginPct,
-      y: spend,
-      size: spend,
-      color: colorByProv[m?.provider ?? "anthropic"] ?? "#A3A39A",
-    };
-  });
+export const dynamic = "force-dynamic";
 
-  const rows = [...PROJECTS]
+export default async function ReportsPage() {
+  const [projects, customers, models] = await Promise.all([
+    listProjects(),
+    listCustomers(),
+    listModels(),
+  ]);
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const modelById = new Map(models.map((m) => [m.id, m]));
+
+  // Risk matrix: x = margin %, y = monthly spend (ai + infra)
+  const data = projects
+    .filter((p) => p.monthly_revenue > 0)
+    .map((p) => {
+      const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
+      const marginPct = p.monthly_revenue ? margin / p.monthly_revenue : 0;
+      const spend = p.ai_cost + p.infra_cost;
+      const m = modelById.get(p.active_model);
+      const colorByProv: Record<string, string> = {
+        anthropic: "#FFC9A8",
+        openai: "#A9FCAE",
+        google: "#6EC1E4",
+      };
+      return {
+        label: p.name,
+        short: p.name
+          .split(" ")
+          .slice(0, 1)
+          .join("")
+          .slice(0, 3)
+          .toUpperCase(),
+        x: marginPct,
+        y: spend,
+        size: spend,
+        color: colorByProv[m?.provider ?? "anthropic"] ?? "#A3A39A",
+      };
+    });
+
+  const rows = [...projects]
     .map((p) => {
       const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
       const marginPct = p.monthly_revenue ? margin / p.monthly_revenue : -1;
@@ -86,7 +94,7 @@ export default function ReportsPage() {
           </thead>
           <tbody>
             {rows.map(({ p, margin, marginPct }) => {
-              const c = customerById(p.customer_id);
+              const c = customerById.get(p.customer_id);
               return (
                 <tr key={p.id} className="no-hover">
                   <td className="strong">{p.name}</td>

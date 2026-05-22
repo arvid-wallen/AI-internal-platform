@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
-import { NOTES, projectById } from "@/lib/data";
+import { getProject, listNotesForProject } from "@/lib/db";
 import { Icons } from "@/components/icons";
 import { Pill } from "@/components/ui";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectNotesPage({
   params,
@@ -9,9 +11,9 @@ export default async function ProjectNotesPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const p = projectById(id);
+  const p = await getProject(id);
   if (!p) notFound();
-  const list = NOTES.filter((n) => n.parent === p.id);
+  const list = await listNotesForProject(p.id);
   return (
     <div className="stack">
       <div className="card">

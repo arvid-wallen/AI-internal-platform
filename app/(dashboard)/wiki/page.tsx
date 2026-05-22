@@ -1,8 +1,10 @@
-import { NOTES } from "@/lib/data";
+import { listGlobalNotes } from "@/lib/db";
 import { Pill, SectionHead } from "@/components/ui";
 
-export default function WikiPage() {
-  const global = NOTES.filter((n) => n.parent === "global");
+export const dynamic = "force-dynamic";
+
+export default async function WikiPage() {
+  const global = await listGlobalNotes();
   return (
     <div className="page">
       <div className="page-head">
@@ -29,6 +31,9 @@ export default function WikiPage() {
             <div style={{ fontSize: 13.5, lineHeight: 1.55 }}>{n.body}</div>
           </div>
         ))}
+        {global.length === 0 && (
+          <div className="empty card">Inga delade anteckningar ännu.</div>
+        )}
       </div>
     </div>
   );

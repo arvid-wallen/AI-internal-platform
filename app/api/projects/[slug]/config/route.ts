@@ -1,10 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { modelById, projectBySlug } from "@/lib/data";
+import { getModel, getProject } from "@/lib/db";
 
 // GET /api/projects/[slug]/config
 // Public endpoint - customer projects fetch their active-model config here.
 // Auth: Bearer token in Authorization header (validated against project-specific token in DB).
-// For now mock-data; real impl will query Supabase + vault.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
@@ -17,11 +16,11 @@ export async function GET(
   }
   // TODO: validate bearer against projects.config_bearer_secret_id (vault).
 
-  const p = projectBySlug(slug);
+  const p = await getProject(slug);
   if (!p) {
     return NextResponse.json({ error: "project_not_found" }, { status: 404 });
   }
-  const m = modelById(p.active_model);
+  const m = p.active_model ? await getModel(p.active_model) : null;
   if (!m) {
     return NextResponse.json({ error: "model_not_found" }, { status: 500 });
   }

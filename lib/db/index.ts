@@ -14,20 +14,43 @@ import {
   PROJECTS as MOCK_PROJECTS,
   MODELS as MOCK_MODELS,
   DAILY_USAGE as MOCK_USAGE,
+  DEPENDENCIES as MOCK_DEPS,
+  NOTES as MOCK_NOTES,
+  INCIDENTS as MOCK_INCIDENTS,
+  INVOICES as MOCK_INVOICES,
+  TEAM as MOCK_TEAM,
+  INTEGRATIONS as MOCK_INTEGRATIONS,
+  SYNC_RUNS as MOCK_SYNC_RUNS,
   modelById as mockModelById,
   customerById as mockCustomerById,
   projectById as mockProjectById,
+  projectBySlug as mockProjectBySlug,
+  depsFor as mockDepsFor,
+  modelHistoryFor as mockModelHistoryFor,
   computePortfolio as mockPortfolio,
 } from "@/lib/data";
 import type {
   AIModel,
   Customer,
   DailyUsage,
+  Dependency,
+  Incident,
+  Integration,
+  Invoice,
+  ModelHistoryEntry,
+  Note,
   PortfolioTotals,
   Project,
+  SyncRun,
+  TeamMember,
+  Update,
 } from "@/lib/types";
 
 const isSupabaseConfigured = () => !!process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+// Domain project ids are "p-" + slug; strip the prefix to get the DB slug.
+const stripP = (idOrSlug: string) =>
+  idOrSlug.startsWith("p-") ? idOrSlug.slice(2) : idOrSlug;
 
 // ============ Customers ============
 
@@ -48,35 +71,40 @@ export async function getCustomer(idOrSlug: string): Promise<Customer | null> {
   const { data, error } = await supabase
     .from("customers")
     .select("*, account_manager:team_members(full_name)")
-    .or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`)
+    .eq("slug", idOrSlug)
     .maybeSingle();
   if (error || !data) return mockCustomerById(idOrSlug) ?? null;
-  return toCustomer(data);
+  return toCustomer(data as unknown as DbCustomer);
 }
 
 // ============ Projects ============
+
+const PROJECT_SELECT =
+  "*, customer:customers(slug), project_models(is_active, model:ai_models(model_id))";
 
 export async function listProjects(): Promise<Project[]> {
   if (!isSupabaseConfigured()) return MOCK_PROJECTS;
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .from("projects")
-    .select("*, customer:customers(slug)")
+    .select(PROJECT_SELECT)
     .order("name");
   if (error || !data) return MOCK_PROJECTS;
-  return data.map(toProject);
+  return (data as unknown as DbProject[]).map(toProject);
 }
 
 export async function getProject(idOrSlug: string): Promise<Project | null> {
-  if (!isSupabaseConfigured()) return mockProjectById(idOrSlug) ?? null;
+  const mockHit = () =>
+    mockProjectById(idOrSlug) ?? mockProjectBySlug(stripP(idOrSlug)) ?? null;
+  if (!isSupabaseConfigured()) return mockHit();
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .from("projects")
-    .select("*, customer:customers(slug)")
-    .or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`)
+    .select(PROJECT_SELECT)
+    .eq("slug", stripP(idOrSlug))
     .maybeSingle();
-  if (error || !data) return mockProjectById(idOrSlug) ?? null;
-  return toProject(data);
+  if (error || !data) return mockHit();
+  return toProject(data as unknown as DbProject);
 }
 
 export async function listProjectsForCustomer(
@@ -86,12 +114,17 @@ export async function listProjectsForCustomer(
     return MOCK_PROJECTS.filter((p) => p.customer_id === customerIdOrSlug);
   }
   const supabase = await createSupabaseServer();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("projects")
-    .select("*, customer:customers!inner(slug)")
-    .or(`customer_id.eq.${customerIdOrSlug},customer.slug.eq.${customerIdOrSlug}`)
+    .select(
+      "*, customer:customers!inner(slug), project_models(is_active, model:ai_models(model_id))",
+    )
+    .eq("customer.slug", customerIdOrSlug)
     .order("name");
-  return (data ?? []).map(toProject);
+  if (error || !data) {
+    return MOCK_PROJECTS.filter((p) => p.customer_id === customerIdOrSlug);
+  }
+  return (data as unknown as DbProject[]).map(toProject);
 }
 
 // ============ Models ============
@@ -131,11 +164,11 @@ export async function listDailyUsageForProject(
   since.setUTCDate(since.getUTCDate() - days);
   const { data } = await supabase
     .from("token_usage_daily")
-    .select("*, model:ai_models(model_id)")
-    .eq("project_id", projectId)
+    .select("*, model:ai_models(model_id), project:projects!inner(slug)")
+    .eq("project.slug", stripP(projectId))
     .gte("usage_date", since.toISOString().slice(0, 10))
     .order("usage_date");
-  return (data ?? []).map(toUsage);
+  return ((data ?? []) as unknown as DbUsage[]).map(toUsage);
 }
 
 // ============ Portfolio aggregate ============
@@ -197,7 +230,7 @@ interface DbProject {
   slug: string;
   name: string;
   customer_id: string;
-  customer?: { slug?: string | null } | null;
+  customer?: { slug?: string | null } | { slug?: string | null }[] | null;
   status: "discovery" | "building" | "live" | "paused" | "offboarded";
   go_live_date: string | null;
   github_repo_url: string | null;
@@ -205,14 +238,25 @@ interface DbProject {
   tech_stack: string[] | null;
   monthly_revenue_sek: number | null;
   monthly_infra_budget_sek: number | null;
+  project_models?: Array<{
+    is_active: boolean;
+    model?: { model_id?: string | null } | { model_id?: string | null }[] | null;
+  }> | null;
 }
 
 function toProject(r: DbProject): Project {
+  const customer = Array.isArray(r.customer) ? r.customer[0] : r.customer;
+  const activePm = (r.project_models ?? []).find((pm) => pm.is_active);
+  const activeModel = activePm
+    ? Array.isArray(activePm.model)
+      ? activePm.model[0]
+      : activePm.model
+    : null;
   return {
     id: "p-" + r.slug,
     slug: r.slug,
     name: r.name,
-    customer_id: r.customer?.slug ?? r.customer_id,
+    customer_id: customer?.slug ?? r.customer_id,
     status: r.status,
     go_live: r.go_live_date,
     repo: r.github_repo_url
@@ -220,7 +264,7 @@ function toProject(r: DbProject): Project {
       : null,
     hosting: r.hosting_provider ?? "—",
     stack: r.tech_stack ?? [],
-    active_model: "",                    // resolved from project_models view in detail pages
+    active_model: activeModel?.model_id ?? "",
     monthly_revenue: Number(r.monthly_revenue_sek ?? 0),
     infra_cost: Number(r.monthly_infra_budget_sek ?? 0),
     ai_cost: 0,                          // aggregated from token_usage_daily
@@ -490,4 +534,457 @@ export async function getRecentUpdates(limit = 6): Promise<UpdateRow[]> {
       body: u.body,
     };
   });
+}
+
+export async function listUpdatesForProject(
+  projectId: string,
+): Promise<Update[]> {
+  // No `updates` table yet (see getRecentUpdates) — derive from mock UPDATES.
+  const { UPDATES } = await import("@/lib/data");
+  return UPDATES.filter((u) => u.project === projectId);
+}
+
+// ============ Shared helpers ============
+
+function initialsOf(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function fmtTs(iso: string | null): string {
+  if (!iso) return "";
+  return iso.slice(0, 16).replace("T", " ");
+}
+
+function one<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
+  return Array.isArray(v) ? v[0] ?? null : v;
+}
+
+// ============ Dependencies ============
+
+interface DbDependency {
+  name: string;
+  vendor: string | null;
+  type: Dependency["category"] | null;
+  monthly_cost_sek: number | null;
+  is_critical: boolean;
+  project?: { slug?: string | null } | { slug?: string | null }[] | null;
+}
+
+function toDependency(r: DbDependency): Dependency {
+  const proj = one(r.project);
+  return {
+    project_id: proj?.slug ? "p-" + proj.slug : "",
+    name: r.name,
+    vendor: r.vendor ?? "",
+    category: r.type ?? "other",
+    monthly_sek: Number(r.monthly_cost_sek ?? 0),
+    critical: r.is_critical,
+  };
+}
+
+export async function listDependencies(): Promise<Dependency[]> {
+  if (!isSupabaseConfigured()) return MOCK_DEPS;
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("dependencies")
+    .select("name, vendor, type, monthly_cost_sek, is_critical, project:projects(slug)")
+    .order("name");
+  if (error || !data) return MOCK_DEPS;
+  return (data as unknown as DbDependency[]).map(toDependency);
+}
+
+export async function listDependenciesForProject(
+  projectId: string,
+): Promise<Dependency[]> {
+  if (!isSupabaseConfigured()) return mockDepsFor(projectId);
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("dependencies")
+    .select(
+      "name, vendor, type, monthly_cost_sek, is_critical, project:projects!inner(slug)",
+    )
+    .eq("project.slug", stripP(projectId))
+    .order("name");
+  if (error || !data) return mockDepsFor(projectId);
+  return (data as unknown as DbDependency[]).map(toDependency);
+}
+
+// ============ Notes ============
+
+interface DbNote {
+  id: string;
+  title: string | null;
+  content: string;
+  category: string | null;
+  created_at: string;
+  author?: { full_name?: string | null } | { full_name?: string | null }[] | null;
+}
+
+function toNote(r: DbNote, parent: string): Note {
+  const author = one(r.author);
+  return {
+    id: r.id,
+    parent,
+    title: r.title ?? "",
+    when: (r.created_at ?? "").slice(0, 10),
+    author: initialsOf(author?.full_name ?? ""),
+    tag: r.category ?? "general",
+    body: r.content,
+  };
+}
+
+const NOTE_SELECT =
+  "id, title, content, category, created_at, author:team_members(full_name)";
+
+export async function listGlobalNotes(): Promise<Note[]> {
+  if (!isSupabaseConfigured())
+    return MOCK_NOTES.filter((n) => n.parent === "global");
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("notes")
+    .select(NOTE_SELECT)
+    .eq("parent_type", "global")
+    .order("pinned", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error || !data) return MOCK_NOTES.filter((n) => n.parent === "global");
+  return (data as unknown as DbNote[]).map((r) => toNote(r, "global"));
+}
+
+export async function listNotesForProject(projectId: string): Promise<Note[]> {
+  if (!isSupabaseConfigured())
+    return MOCK_NOTES.filter((n) => n.parent === projectId);
+  const supabase = await createSupabaseServer();
+  const { data: proj } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("slug", stripP(projectId))
+    .maybeSingle();
+  if (!proj) return [];
+  const { data, error } = await supabase
+    .from("notes")
+    .select(NOTE_SELECT)
+    .eq("parent_type", "project")
+    .eq("parent_id", (proj as { id: string }).id)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return (data as unknown as DbNote[]).map((r) => toNote(r, projectId));
+}
+
+// ============ Model history (from model_switches) ============
+
+interface DbModelSwitch {
+  switched_at: string;
+  reason: string | null;
+  to_model?: { model_id?: string | null } | { model_id?: string | null }[] | null;
+  actor?: { full_name?: string | null } | { full_name?: string | null }[] | null;
+}
+
+export async function listModelSwitchesForProject(
+  projectId: string,
+): Promise<ModelHistoryEntry[]> {
+  if (!isSupabaseConfigured()) return mockModelHistoryFor(projectId);
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("model_switches")
+    .select(
+      "switched_at, reason, to_model:ai_models!to_model_id(model_id), actor:team_members(full_name), project:projects!inner(slug)",
+    )
+    .eq("project.slug", stripP(projectId))
+    .order("switched_at", { ascending: false });
+  if (error || !data) return mockModelHistoryFor(projectId);
+  return (data as unknown as DbModelSwitch[]).map((r) => {
+    const m = one(r.to_model);
+    const a = one(r.actor);
+    return {
+      project_id: projectId,
+      model_id: m?.model_id ?? "",
+      from: (r.switched_at ?? "").slice(0, 10),
+      to: null,
+      actor: a?.full_name ?? "—",
+      note: r.reason ?? "",
+    };
+  });
+}
+
+// ============ Incidents ============
+
+interface DbIncident {
+  ref: string;
+  severity: "low" | "medium" | "high" | "critical" | null;
+  title: string;
+  summary: string | null;
+  occurred_at: string;
+  resolved_at: string | null;
+  project?: { slug?: string | null } | { slug?: string | null }[] | null;
+}
+
+function toIncident(r: DbIncident): Incident {
+  const proj = one(r.project);
+  const severity: Incident["severity"] =
+    r.severity === "critical" ? "high" : (r.severity ?? "low");
+  return {
+    id: r.ref,
+    when: fmtTs(r.occurred_at),
+    project_id: proj?.slug ? "p-" + proj.slug : "",
+    severity,
+    title: r.title,
+    summary: r.summary ?? "",
+    resolved: r.resolved_at != null,
+  };
+}
+
+export async function listIncidents(): Promise<Incident[]> {
+  if (!isSupabaseConfigured()) return MOCK_INCIDENTS;
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("incidents")
+    .select(
+      "ref, severity, title, summary, occurred_at, resolved_at, project:projects(slug)",
+    )
+    .order("occurred_at", { ascending: false });
+  if (error || !data) return MOCK_INCIDENTS;
+  return (data as unknown as DbIncident[]).map(toIncident);
+}
+
+// ============ Invoices ============
+
+interface DbInvoice {
+  id: string;
+  fortnox_invoice_id: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  total_excl_vat_sek: number | null;
+  total_incl_vat_sek: number | null;
+  status: "draft" | "sent" | "paid" | "overdue" | "credited" | null;
+  recurring: boolean | null;
+  customer?: { slug?: string | null } | { slug?: string | null }[] | null;
+  project?: { slug?: string | null } | { slug?: string | null }[] | null;
+}
+
+function toInvoice(r: DbInvoice): Invoice {
+  const cust = one(r.customer);
+  const proj = one(r.project);
+  const status: Invoice["status"] =
+    r.status === "credited" ? "paid" : (r.status ?? "draft");
+  return {
+    id: r.invoice_number ?? r.fortnox_invoice_id ?? r.id,
+    customer_id: cust?.slug ?? "",
+    project_id: proj?.slug ? "p-" + proj.slug : "",
+    date: r.invoice_date ?? "",
+    due: r.due_date ?? "",
+    amount: Number(r.total_incl_vat_sek ?? r.total_excl_vat_sek ?? 0),
+    status,
+    recurring: !!r.recurring,
+  };
+}
+
+const INVOICE_SELECT =
+  "id, fortnox_invoice_id, invoice_number, invoice_date, due_date, total_excl_vat_sek, total_incl_vat_sek, status, recurring, customer:customers(slug), project:projects(slug)";
+
+export async function listInvoices(): Promise<Invoice[]> {
+  if (!isSupabaseConfigured()) return MOCK_INVOICES;
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("invoices")
+    .select(INVOICE_SELECT)
+    .order("invoice_date", { ascending: false });
+  if (error || !data) return MOCK_INVOICES;
+  return (data as unknown as DbInvoice[]).map(toInvoice);
+}
+
+export async function listInvoicesForCustomer(
+  customerId: string,
+): Promise<Invoice[]> {
+  if (!isSupabaseConfigured())
+    return MOCK_INVOICES.filter((i) => i.customer_id === customerId);
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("invoices")
+    .select(
+      "id, fortnox_invoice_id, invoice_number, invoice_date, due_date, total_excl_vat_sek, total_incl_vat_sek, status, recurring, customer:customers!inner(slug), project:projects(slug)",
+    )
+    .eq("customer.slug", customerId)
+    .order("invoice_date", { ascending: false });
+  if (error || !data)
+    return MOCK_INVOICES.filter((i) => i.customer_id === customerId);
+  return (data as unknown as DbInvoice[]).map(toInvoice);
+}
+
+// ============ Team ============
+
+interface DbTeamMember {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: "admin" | "editor" | "viewer";
+  is_active: boolean;
+}
+
+function toTeamMember(r: DbTeamMember): TeamMember {
+  return {
+    id: r.id,
+    name: r.full_name ?? r.email,
+    email: r.email,
+    role: r.role,
+    initials: initialsOf(r.full_name ?? r.email),
+    color: pickMark(r.email),
+    active: r.is_active,
+  };
+}
+
+export async function listTeam(): Promise<TeamMember[]> {
+  if (!isSupabaseConfigured()) return MOCK_TEAM;
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("team_members")
+    .select("id, email, full_name, role, is_active")
+    .order("full_name");
+  if (error || !data) return MOCK_TEAM;
+  return (data as unknown as DbTeamMember[]).map(toTeamMember);
+}
+
+// ============ Integrations ============
+
+interface DbIntegration {
+  provider_slug: string;
+  metadata: Record<string, unknown> | null;
+  last_synced_at: string | null;
+  last_sync_status: "ok" | "partial" | "failed" | "rate_limited" | null;
+  last_sync_error: string | null;
+}
+
+const INTEGRATION_NAMES: Record<string, string> = {
+  anthropic: "Anthropic Admin API",
+  openai: "OpenAI Organization",
+  google: "Google Cloud Billing",
+  fortnox: "Fortnox",
+  github: "GitHub",
+  vercel: "Vercel",
+  riksbanken: "Riksbanken (FX)",
+};
+
+function toIntegration(r: DbIntegration): Integration {
+  const status: Integration["status"] =
+    r.last_sync_status === "ok"
+      ? "ok"
+      : r.last_sync_status === "failed"
+        ? "fail"
+        : r.last_sync_status == null
+          ? "ok"
+          : "warn";
+  const meta = r.metadata ?? {};
+  return {
+    id: r.provider_slug,
+    name: INTEGRATION_NAMES[r.provider_slug] ?? r.provider_slug,
+    desc: typeof meta.description === "string" ? meta.description : "",
+    status,
+    last_sync: r.last_synced_at ? fmtTs(r.last_synced_at) : "—",
+    workspaces: typeof meta.workspaces === "number" ? meta.workspaces : null,
+    color: "paper",
+    note: r.last_sync_error ?? undefined,
+  };
+}
+
+export async function listIntegrations(): Promise<Integration[]> {
+  if (!isSupabaseConfigured()) return MOCK_INTEGRATIONS;
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("integrations_credentials")
+    .select(
+      "provider_slug, metadata, last_synced_at, last_sync_status, last_sync_error",
+    );
+  if (error || !data) return MOCK_INTEGRATIONS;
+  return (data as unknown as DbIntegration[]).map(toIntegration);
+}
+
+// ============ Sync runs ============
+
+interface DbSyncRun {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: "ok" | "partial" | "failed" | "rate_limited" | null;
+  records_ingested: number | null;
+  error_message: string | null;
+  integration?:
+    | { provider_slug?: string | null }
+    | { provider_slug?: string | null }[]
+    | null;
+}
+
+function toSyncRun(r: DbSyncRun): SyncRun {
+  const integ = one(r.integration);
+  const status: SyncRun["status"] =
+    r.status === "ok" ? "ok" : r.status === "failed" ? "fail" : "warn";
+  let took = "—";
+  if (r.finished_at && r.started_at) {
+    const ms =
+      new Date(r.finished_at).getTime() - new Date(r.started_at).getTime();
+    if (ms >= 0) took = (ms / 1000).toFixed(1) + "s";
+  }
+  return {
+    id: r.id,
+    integration: integ?.provider_slug ?? "—",
+    at: fmtTs(r.started_at),
+    status,
+    records: r.records_ingested ?? 0,
+    took,
+    err: r.error_message ?? undefined,
+  };
+}
+
+export async function listSyncRuns(limit = 12): Promise<SyncRun[]> {
+  if (!isSupabaseConfigured()) return MOCK_SYNC_RUNS;
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("integration_sync_runs")
+    .select(
+      "id, started_at, finished_at, status, records_ingested, error_message, integration:integrations_credentials(provider_slug)",
+    )
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return MOCK_SYNC_RUNS;
+  return (data as unknown as DbSyncRun[]).map(toSyncRun);
+}
+
+// ============ Portfolio token totals ============
+
+export interface PortfolioTokenTotals {
+  cost_sek: number;
+  tokens_in: number;
+  tokens_out: number;
+}
+
+export async function getPortfolioTokenTotals(
+  days = 60,
+): Promise<PortfolioTokenTotals> {
+  if (!isSupabaseConfigured()) {
+    return {
+      cost_sek: MOCK_USAGE.reduce((s, u) => s + u.cost_sek, 0),
+      tokens_in: MOCK_USAGE.reduce((s, u) => s + u.tokens_in, 0),
+      tokens_out: MOCK_USAGE.reduce((s, u) => s + u.tokens_out, 0),
+    };
+  }
+  const supabase = await createSupabaseServer();
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - days);
+  const { data } = await supabase
+    .from("token_usage_daily")
+    .select("input_tokens, output_tokens, cost_sek")
+    .gte("usage_date", since.toISOString().slice(0, 10));
+  const rows = (data ?? []) as Array<{
+    input_tokens: number | null;
+    output_tokens: number | null;
+    cost_sek: number | null;
+  }>;
+  return {
+    cost_sek: rows.reduce((s, r) => s + Number(r.cost_sek ?? 0), 0),
+    tokens_in: rows.reduce((s, r) => s + Number(r.input_tokens ?? 0), 0),
+    tokens_out: rows.reduce((s, r) => s + Number(r.output_tokens ?? 0), 0),
+  };
 }

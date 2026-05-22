@@ -1,12 +1,14 @@
-import Link from "next/link";
-import { MODELS, PROJECTS } from "@/lib/data";
+import { listModels, listProjects } from "@/lib/db";
 import { Icons } from "@/components/icons";
 import { ProviderChip, SectionHead } from "@/components/ui";
 import { fmt } from "@/lib/format";
 
-export default function ModelsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ModelsPage() {
+  const [models, projects] = await Promise.all([listModels(), listProjects()]);
   const usageByModel = new Map<string, number>();
-  for (const p of PROJECTS) {
+  for (const p of projects) {
     usageByModel.set(
       p.active_model,
       (usageByModel.get(p.active_model) ?? 0) + 1,
@@ -20,7 +22,7 @@ export default function ModelsPage() {
           <div className="page-eyebrow">Core</div>
           <h1 className="page-title">Models</h1>
           <p className="page-sub">
-            {MODELS.length} modeller registrerade · {MODELS.filter(
+            {models.length} modeller registrerade · {models.filter(
               (m) => m.is_current,
             ).length}{" "}
             aktuella.
@@ -51,7 +53,7 @@ export default function ModelsPage() {
             </tr>
           </thead>
           <tbody>
-            {MODELS.map((m) => (
+            {models.map((m) => (
               <tr key={m.id} className="no-hover">
                 <td>
                   <div className="strong">{m.display}</div>
