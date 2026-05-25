@@ -1,14 +1,17 @@
 import { listIntegrations, listSyncRuns, listTeam } from "@/lib/db";
+import { getMappingData } from "@/lib/actions/workspace-map";
 import { Icons } from "@/components/icons";
 import { Pill, SectionHead } from "@/components/ui";
+import { WorkspaceMapping } from "./WorkspaceMapping";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [integrations, syncRuns, team] = await Promise.all([
+  const [integrations, syncRuns, team, mapping] = await Promise.all([
     listIntegrations(),
     listSyncRuns(),
     listTeam(),
+    getMappingData(),
   ]);
 
   return (
@@ -151,6 +154,25 @@ export default async function SettingsPage() {
               ))}
             </div>
           </div>
+
+          {mapping.configured && (
+            <>
+              <WorkspaceMapping
+                provider="anthropic"
+                label="Anthropic workspace-mappning"
+                idLabel="workspace_id"
+                projects={mapping.projects}
+                initialMap={mapping.anthropicMap}
+              />
+              <WorkspaceMapping
+                provider="openai"
+                label="OpenAI project-mappning"
+                idLabel="project_id"
+                projects={mapping.projects}
+                initialMap={mapping.openaiMap}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -18,19 +18,28 @@ export async function GET(request: NextRequest) {
       return jsonOk({ skipped: "no_admin_key" });
     }
 
+    // Window: ?from=YYYY-MM-DD&to=YYYY-MM-DD for backfill; default = yesterday→today.
+    const sp = request.nextUrl.searchParams;
     const now = Math.floor(Date.now() / 1000);
     const startOfToday = now - (now % 86400);
-    const startOfYesterday = startOfToday - 86400;
+    const fromParam = sp.get("from");
+    const toParam = sp.get("to");
+    const startOfYesterday = fromParam
+      ? Math.floor(new Date(`${fromParam}T00:00:00.000Z`).getTime() / 1000)
+      : startOfToday - 86400;
+    const windowEnd = toParam
+      ? Math.floor(new Date(`${toParam}T00:00:00.000Z`).getTime() / 1000)
+      : startOfToday;
 
     const [usage, costs] = await Promise.all([
       fetchCompletionsUsage({
         start_time: startOfYesterday,
-        end_time: startOfToday,
+        end_time: windowEnd,
         group_by: ["project_id", "model"],
       }),
       fetchCosts({
         start_time: startOfYesterday,
-        end_time: startOfToday,
+        end_time: windowEnd,
         group_by: ["project_id", "line_item"],
       }),
     ]);

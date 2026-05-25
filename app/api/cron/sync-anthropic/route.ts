@@ -22,14 +22,22 @@ export async function GET(request: NextRequest) {
       return jsonOk({ skipped: "no_admin_key" });
     }
 
+    // Window: ?from=YYYY-MM-DD&to=YYYY-MM-DD for backfill; default = yesterday→today.
+    const sp = request.nextUrl.searchParams;
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setUTCDate(today.getUTCDate() - 1);
+    const defaultFrom = new Date(today);
+    defaultFrom.setUTCDate(today.getUTCDate() - 1);
+    const fromParam = sp.get("from");
+    const toParam = sp.get("to");
+    const startingAt = fromParam
+      ? new Date(`${fromParam}T00:00:00.000Z`)
+      : defaultFrom;
+    const endingAt = toParam ? new Date(`${toParam}T00:00:00.000Z`) : today;
 
     const buckets = await fetchCostReport({
-      starting_at: yesterday.toISOString(),
-      ending_at: today.toISOString(),
+      starting_at: startingAt.toISOString(),
+      ending_at: endingAt.toISOString(),
       bucket_width: "1d",
       group_by: ["workspace_id", "model"],
     });
