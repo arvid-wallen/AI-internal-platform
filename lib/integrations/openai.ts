@@ -1,6 +1,7 @@
 // OpenAI Organization Usage API client.
 // Docs: https://platform.openai.com/docs/api-reference/usage
-// Requires an admin org key (sk-admin-...). Set OPENAI_ADMIN_KEY.
+// Requires an admin org key (sk-admin-...). Pass apiKey explicitly to support
+// multiple orgs; falls back to OPENAI_ADMIN_KEY for single-org callers.
 
 const BASE = "https://api.openai.com/v1/organization";
 
@@ -54,6 +55,13 @@ interface FetchOpts<G extends string> {
   start_time: number;        // unix seconds, midnight UTC
   end_time: number;
   group_by?: G[];
+  apiKey?: string;           // explicit org admin key; defaults to env
+}
+
+function resolveKey(explicit?: string): string {
+  const key = explicit ?? process.env.OPENAI_ADMIN_KEY;
+  if (!key) throw new Error("OpenAI admin key not provided");
+  return key;
 }
 
 export async function fetchCompletionsUsage(
@@ -72,9 +80,7 @@ async function fetchUsage(
   endpoint: string,
   opts: FetchOpts<UsageGroupBy>,
 ): Promise<OpenAIUsageBucket[]> {
-  const key = process.env.OPENAI_ADMIN_KEY;
-  if (!key) throw new Error("OPENAI_ADMIN_KEY not set");
-
+  const key = resolveKey(opts.apiKey);
   const url = new URL(`${BASE}${endpoint}`);
   url.searchParams.set("start_time", String(opts.start_time));
   url.searchParams.set("end_time", String(opts.end_time));
@@ -102,8 +108,7 @@ async function fetchUsage(
 export async function fetchCosts(
   opts: FetchOpts<CostGroupBy>,
 ): Promise<OpenAICostBucket[]> {
-  const key = process.env.OPENAI_ADMIN_KEY;
-  if (!key) throw new Error("OPENAI_ADMIN_KEY not set");
+  const key = resolveKey(opts.apiKey);
   const url = new URL(`${BASE}/costs`);
   url.searchParams.set("start_time", String(opts.start_time));
   url.searchParams.set("end_time", String(opts.end_time));
@@ -125,4 +130,10 @@ export async function fetchCosts(
     page = body.has_more ? body.next_page : null;
   } while (page);
   return out;
+}
+
+// All configured OpenAI org admin keys (Nimo legacy + Haus AI new, etc).
+export function openAiAdminKeys(): string[] {
+  return [process.env.OPENAI_ADMIN_KEY, process.env.OPENAI_ADMIN_KEY_HAUS]
+    .filter((k): k is string => !!k);
 }

@@ -1,19 +1,27 @@
 import type { NextRequest } from "next/server";
 import { isCronAuthorized, jsonError, jsonOk, startSyncRun, finishSyncRun } from "@/lib/cron";
-import { fetchCompletionsUsage, fetchCosts } from "@/lib/integrations/openai";
+import {
+  fetchCompletionsUsage,
+  fetchCosts,
+  openAiAdminKeys,
+} from "@/lib/integrations/openai";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+// Pulls usage + cost across ALL configured OpenAI orgs (Nimo legacy +
+// Haus AI new). OpenAI project ids (proj_...) are globally unique so rows
+// from different orgs never collide on the upsert key.
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return jsonError("unauthorized", 401);
   const run = await startSyncRun("openai");
 
   try {
-    if (!process.env.OPENAI_ADMIN_KEY) {
+    const keys = openAiAdminKeys();
+    if (keys.length === 0) {
       await finishSyncRun(run?.id ?? null, "failed", {
-        error: "OPENAI_ADMIN_KEY not set",
+        error: "No OpenAI admin key set (OPENAI_ADMIN_KEY / OPENAI_ADMIN_KEY_HAUS)",
       });
       return jsonOk({ skipped: "no_admin_key" });
     }
@@ -24,25 +32,12 @@ export async function GET(request: NextRequest) {
     const startOfToday = now - (now % 86400);
     const fromParam = sp.get("from");
     const toParam = sp.get("to");
-    const startOfYesterday = fromParam
+    const startTime = fromParam
       ? Math.floor(new Date(`${fromParam}T00:00:00.000Z`).getTime() / 1000)
       : startOfToday - 86400;
-    const windowEnd = toParam
+    const endTime = toParam
       ? Math.floor(new Date(`${toParam}T00:00:00.000Z`).getTime() / 1000)
       : startOfToday;
-
-    const [usage, costs] = await Promise.all([
-      fetchCompletionsUsage({
-        start_time: startOfYesterday,
-        end_time: windowEnd,
-        group_by: ["project_id", "model"],
-      }),
-      fetchCosts({
-        start_time: startOfYesterday,
-        end_time: windowEnd,
-        group_by: ["project_id", "line_item"],
-      }),
-    ]);
 
     const supabase = createSupabaseAdmin();
     const { data: cred } = await supabase
@@ -70,47 +65,68 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     const usdSek = fx?.usd_sek ?? 10.78;
 
-    // Build cost lookup keyed by (project_id, day).
-    const costByKey = new Map<string, number>();
-    for (const bucket of costs) {
-      const usageDate = new Date(bucket.start_time * 1000)
-        .toISOString()
-        .slice(0, 10);
-      for (const c of bucket.results) {
-        const k = `${c.project_id ?? "_"}|${usageDate}`;
-        costByKey.set(k, (costByKey.get(k) ?? 0) + c.amount.value);
-      }
-    }
-
     const rows: Array<Record<string, unknown>> = [];
     let totalRecords = 0;
     let totalCostUsd = 0;
-    for (const bucket of usage) {
-      const usageDate = new Date(bucket.start_time * 1000)
-        .toISOString()
-        .slice(0, 10);
-      for (const r of bucket.results) {
-        const hubProjectId = r.project_id ? projectMap[r.project_id] ?? null : null;
-        const model_id = r.model ? modelMap.get(r.model) ?? null : null;
-        const cost_usd = costByKey.get(`${r.project_id ?? "_"}|${usageDate}`) ?? 0;
-        rows.push({
-          project_id: hubProjectId,
-          model_id,
-          provider_id: openaiProvider?.id ?? null,
-          usage_date: usageDate,
-          input_tokens: r.input_tokens,
-          output_tokens: r.output_tokens,
-          cache_read_tokens: r.input_cached_tokens,
-          cache_write_tokens: 0,
-          request_count: r.num_model_requests,
-          cost_usd,
-          cost_sek: Number((cost_usd * usdSek).toFixed(2)),
-          source_workspace_id: r.project_id,
-          raw: r,
-          ingested_at: new Date().toISOString(),
-        });
-        totalRecords += 1;
-        totalCostUsd += cost_usd;
+
+    for (const apiKey of keys) {
+      const [usage, costs] = await Promise.all([
+        fetchCompletionsUsage({
+          start_time: startTime,
+          end_time: endTime,
+          group_by: ["project_id", "model"],
+          apiKey,
+        }),
+        fetchCosts({
+          start_time: startTime,
+          end_time: endTime,
+          group_by: ["project_id", "line_item"],
+          apiKey,
+        }),
+      ]);
+
+      // Cost lookup keyed by (project_id, day) within this org.
+      const costByKey = new Map<string, number>();
+      for (const bucket of costs) {
+        const usageDate = new Date(bucket.start_time * 1000)
+          .toISOString()
+          .slice(0, 10);
+        for (const c of bucket.results) {
+          const k = `${c.project_id ?? "_"}|${usageDate}`;
+          costByKey.set(k, (costByKey.get(k) ?? 0) + c.amount.value);
+        }
+      }
+
+      for (const bucket of usage) {
+        const usageDate = new Date(bucket.start_time * 1000)
+          .toISOString()
+          .slice(0, 10);
+        for (const r of bucket.results) {
+          const hubProjectId = r.project_id
+            ? projectMap[r.project_id] ?? null
+            : null;
+          const model_id = r.model ? modelMap.get(r.model) ?? null : null;
+          const cost_usd =
+            costByKey.get(`${r.project_id ?? "_"}|${usageDate}`) ?? 0;
+          rows.push({
+            project_id: hubProjectId,
+            model_id,
+            provider_id: openaiProvider?.id ?? null,
+            usage_date: usageDate,
+            input_tokens: r.input_tokens,
+            output_tokens: r.output_tokens,
+            cache_read_tokens: r.input_cached_tokens,
+            cache_write_tokens: 0,
+            request_count: r.num_model_requests,
+            cost_usd,
+            cost_sek: Number((cost_usd * usdSek).toFixed(2)),
+            source_workspace_id: r.project_id,
+            raw: r,
+            ingested_at: new Date().toISOString(),
+          });
+          totalRecords += 1;
+          totalCostUsd += cost_usd;
+        }
       }
     }
 
@@ -127,7 +143,7 @@ export async function GET(request: NextRequest) {
       records: totalRecords,
       cost_usd: totalCostUsd,
     });
-    return jsonOk({ records: totalRecords });
+    return jsonOk({ orgs: keys.length, records: totalRecords });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await finishSyncRun(run?.id ?? null, "failed", { error: msg });
