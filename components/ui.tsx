@@ -40,6 +40,11 @@ const STATUS_LABELS: Record<string, string> = {
   warn: "Varning",
   fail: "Fel",
   critical: "Kritisk",
+  high: "Hög",
+  medium: "Medel",
+  low: "Låg",
+  resolved: "Löst",
+  ongoing: "Pågående",
 };
 
 export function StatusPill({ status }: { status: string }) {
@@ -137,19 +142,7 @@ export function SectionHead({
       <div>
         <h3 className="card-title">
           {title}
-          {count != null && (
-            <span
-              className="dim"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                marginLeft: 8,
-                letterSpacing: "0.1em",
-              }}
-            >
-              {count}
-            </span>
-          )}
+          {count != null && <span className="count">{count}</span>}
         </h3>
         {sub && <p className="card-sub">{sub}</p>}
       </div>

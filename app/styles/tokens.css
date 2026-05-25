@@ -1,6 +1,6 @@
 /* ============================================================
    HAUS AI — Design Tokens
-   Built from haus.se brand extraction + Seriguela × Apercu
+   Built from haus.se brand extraction · Apercu
    Canvas: warm off-white. Ink: near-black. Accents: pastel.
    ============================================================ */
 
@@ -15,53 +15,14 @@
 @font-face { font-family: "Apercu"; src: url("/fonts/Apercu-BoldItalic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
 @font-face { font-family: "Apercu Mono"; src: url("/fonts/Apercu-Mono.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
 
-/* -------- Seriguela (editorial serif — expected at fonts/Seriguela-*.otf) -------- */
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-ExLight.otf") format("opentype"); font-weight: 200; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-ExLightItalic.otf") format("opentype"); font-weight: 200; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Thin.otf") format("opentype"); font-weight: 250; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-ThinItalic.otf") format("opentype"); font-weight: 250; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-LightItalic.otf") format("opentype"); font-weight: 300; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-RegularItalic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-MediumItalic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-SemiBold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-SemiBoldItalic.otf") format("opentype"); font-weight: 600; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-BoldItalic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-Black.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela"; src: url("/fonts/Seriguela-BlackItalic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
-
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-ExLight.otf") format("opentype"); font-weight: 200; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-ExLightItalic.otf") format("opentype"); font-weight: 200; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Thin.otf") format("opentype"); font-weight: 250; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-ThinItalic.otf") format("opentype"); font-weight: 250; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-LightItalic.otf") format("opentype"); font-weight: 300; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-RegularItalic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-MediumItalic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-SemiBold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-SemiBoldItalic.otf") format("opentype"); font-weight: 600; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-BoldItalic.otf") format("opentype"); font-weight: 700; font-style: italic; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-Black.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Display"; src: url("/fonts/Seriguela-Display-BlackItalic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
-
-@font-face { font-family: "Seriguela Poster"; src: url("/fonts/Seriguela-Poster.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Poster"; src: url("/fonts/Seriguela-Display-Poster.otf") format("opentype"); font-weight: 900; font-style: normal; font-display: swap; }
-@font-face { font-family: "Seriguela Poster"; src: url("/fonts/Seriguela-Display-PosterItalic.otf") format("opentype"); font-weight: 900; font-style: italic; font-display: swap; }
-
 :root {
   /* ---- Type stacks --------------------------------------
-     Fallback chain: Seriguela → Playfair Display (loaded from Google
-     Fonts in the page head) → Georgia. Playfair has similar optical
-     size + contrast, so the tight tracking still works gracefully. */
-  --font-display: "Seriguela Display", "Seriguela", "Playfair Display", Georgia, serif;
-  --font-serif:   "Seriguela", "Playfair Display", Georgia, serif;
-  --font-poster:  "Seriguela Poster", "Seriguela Display", "Playfair Display", Georgia, serif;
+     Apercu only (Seriguela was dropped — too hard to read). The
+     display/serif/poster aliases are kept so existing rules keep
+     working, but all now resolve to Apercu. */
+  --font-display: "Apercu", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif:   "Apercu", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-poster:  "Apercu", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-sans:    "Apercu", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:    "Apercu Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
@@ -96,6 +57,7 @@
   --c-paper-3:     #DFDBD0;   /* recessed */
   --c-chalk:       #FBFAF6;   /* true near-white */
   --c-ink:         #313231;   /* primary text / buttons */
+  --c-ink-strong:  #1F201F;   /* pressed/hover ink (darker than --c-ink) */
   --c-ink-2:       #4D4D4D;   /* body secondary */
   --c-ink-3:       #69727D;   /* tertiary / muted */
   --c-ink-4:       #A3A39A;   /* disabled / captions */

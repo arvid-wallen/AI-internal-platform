@@ -18,8 +18,18 @@ export default async function ProjectNotesPage({
     <div className="stack">
       <div className="card">
         <div className="row gap-2">
-          <input className="inp" placeholder="Skriv en anteckning…" />
-          <button className="b primary" type="button">
+          <input
+            className="inp"
+            placeholder="Skriv en anteckning…"
+            aria-label="Ny anteckning"
+            disabled
+          />
+          <button
+            className="b primary"
+            type="button"
+            disabled
+            title="Kommer snart"
+          >
             <Icons.Plus size={12} />
             Spara
           </button>

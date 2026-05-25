@@ -54,4 +54,25 @@ export const fmt = {
     const d = new Date(iso);
     return d.getUTCDate() + "/" + (d.getUTCMonth() + 1);
   },
+  longDate(d: Date = new Date()): string {
+    return d.toLocaleDateString("sv-SE", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "Europe/Stockholm",
+    });
+  },
+  greeting(d: Date = new Date()): string {
+    const h = Number(
+      d.toLocaleString("en-US", {
+        hour: "numeric",
+        hourCycle: "h23",
+        timeZone: "Europe/Stockholm",
+      }),
+    );
+    if (h < 10) return "God morgon";
+    if (h < 18) return "God eftermiddag";
+    return "God kväll";
+  },
 };

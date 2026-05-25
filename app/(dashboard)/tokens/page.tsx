@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   getDailyPortfolio,
   getPortfolioTokenTotals,
@@ -91,8 +92,16 @@ export default async function TokensPage() {
           </thead>
           <tbody>
             {top.map((t) => (
-              <tr key={t.project_id} className="no-hover">
-                <td className="strong">{t.project_name}</td>
+              <tr key={t.project_id}>
+                <td>
+                  <Link
+                    href={`/projects/${t.project_slug}`}
+                    className="strong"
+                    style={{ display: "block", textDecoration: "none" }}
+                  >
+                    {t.project_name}
+                  </Link>
+                </td>
                 <td>{t.active_model_display || "—"}</td>
                 <td className="num">{fmt.ksek(t.ai_cost)}</td>
               </tr>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listIncidents, listProjects } from "@/lib/db";
-import { Pill, SectionHead, StatusPill } from "@/components/ui";
+import { SectionHead, StatusPill } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -53,9 +53,7 @@ export default async function IncidentsPage() {
                       )}
                     </td>
                     <td>
-                      <Pill kind={i.severity === "high" ? "critical" : i.severity === "medium" ? "warn" : "ok"}>
-                        {i.severity}
-                      </Pill>
+                      <StatusPill status={i.severity} />
                     </td>
                     <td>
                       <div className="strong">{i.title}</div>
@@ -94,7 +92,7 @@ export default async function IncidentsPage() {
                     {p && <Link href={`/projects/${p.id}`}>{p.name}</Link>}
                   </td>
                   <td>
-                    <StatusPill status="paid" />
+                    <StatusPill status={i.severity} />
                   </td>
                   <td>{i.title}</td>
                 </tr>

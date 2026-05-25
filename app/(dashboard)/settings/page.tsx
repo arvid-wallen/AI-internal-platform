@@ -1,7 +1,7 @@
 import { listIntegrations, listSyncRuns, listTeam } from "@/lib/db";
 import { getMappingData } from "@/lib/actions/workspace-map";
 import { Icons } from "@/components/icons";
-import { Pill, SectionHead } from "@/components/ui";
+import { Pill, SectionHead, StatusPill } from "@/components/ui";
 import { WorkspaceMapping } from "./WorkspaceMapping";
 
 export const dynamic = "force-dynamic";
@@ -44,21 +44,8 @@ export default async function SettingsPage() {
                     <div className="desc">{it.desc}</div>
                   </div>
                   <div className="right">
-                    <Pill
-                      kind={
-                        it.status === "ok"
-                          ? "ok"
-                          : it.status === "warn"
-                            ? "warn"
-                            : "fail"
-                      }
-                    >
-                      {it.status}
-                    </Pill>
-                    <div
-                      className="dim"
-                      style={{ fontSize: 11, marginTop: 4 }}
-                    >
+                    <StatusPill status={it.status} />
+                    <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>
                       sync {it.last_sync}
                     </div>
                   </div>
@@ -90,17 +77,7 @@ export default async function SettingsPage() {
                     <td className="tnum">{r.at}</td>
                     <td>{r.integration}</td>
                     <td>
-                      <Pill
-                        kind={
-                          r.status === "ok"
-                            ? "ok"
-                            : r.status === "warn"
-                              ? "warn"
-                              : "fail"
-                        }
-                      >
-                        {r.status}
-                      </Pill>
+                      <StatusPill status={r.status} />
                     </td>
                     <td className="num">{r.records}</td>
                     <td className="tnum num">{r.took}</td>
@@ -127,18 +104,7 @@ export default async function SettingsPage() {
             <div className="set-list">
               {team.map((u) => (
                 <div key={u.id} className="set-row">
-                  <div
-                    className={"avatar"}
-                    style={{
-                      background: `var(--c-${u.color})`,
-                      color: `var(--c-${u.color}-ink)`,
-                      width: 32,
-                      height: 32,
-                      fontSize: 12,
-                    }}
-                  >
-                    {u.initials}
-                  </div>
+                  <div className={`avatar lg ${u.color}`}>{u.initials}</div>
                   <div className="info">
                     <div className="name">{u.name}</div>
                     <div className="desc">{u.email}</div>

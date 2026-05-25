@@ -8,7 +8,13 @@ import {
 } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
-import { ClassPill, KpiCard, SectionHead, StatusPill } from "@/components/ui";
+import {
+  ClassPill,
+  KpiCard,
+  ProviderChip,
+  SectionHead,
+  StatusPill,
+} from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -55,11 +61,11 @@ export default async function CustomerDetailPage({
           </div>
         </div>
         <div className="actions">
-          <button className="b" type="button">
+          <button className="b" type="button" disabled title="Kommer snart">
             <Icons.Ext size={14} />
             Öppna i Fortnox
           </button>
-          <button className="b" type="button">
+          <button className="b" type="button" disabled title="Kommer snart">
             <Icons.Edit size={14} />
             Redigera
           </button>
@@ -110,15 +116,10 @@ export default async function CustomerDetailPage({
                     <td>
                       {m && (
                         <div className="row">
-                          <span
-                            className={"pdot " + m.provider}
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 2,
-                              marginRight: 6,
-                            }}
-                          ></span>
+                          <ProviderChip
+                            provider={m.provider}
+                            showLabel={false}
+                          />
                           {m.display}
                         </div>
                       )}

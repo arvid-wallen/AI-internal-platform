@@ -44,6 +44,7 @@ export function CustomersFilter({ customers }: { customers: CustomerRow[] }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Sök kund eller org.nr"
+            aria-label="Sök kund eller org.nr"
           />
         </div>
         <button
@@ -63,8 +64,8 @@ export function CustomersFilter({ customers }: { customers: CustomerRow[] }) {
             Class {k}
           </button>
         ))}
-        <div style={{ flex: 1 }}></div>
-        <button className="b sm" type="button">
+        <div className="flex-1"></div>
+        <button className="b sm" type="button" disabled title="Kommer snart">
           <Icons.Filter size={12} />
           Fler filter
         </button>

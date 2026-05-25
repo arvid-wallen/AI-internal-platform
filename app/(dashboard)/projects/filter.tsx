@@ -55,6 +55,7 @@ export function ProjectsFilter({ rows }: { rows: ProjectRow[] }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Sök projekt eller kund"
+            aria-label="Sök projekt eller kund"
           />
         </div>
         {(["all", "live", "building", "discovery", "paused"] as const).map(
@@ -72,12 +73,13 @@ export function ProjectsFilter({ rows }: { rows: ProjectRow[] }) {
             </button>
           ),
         )}
-        <div style={{ flex: 1 }}></div>
+        <div className="flex-1"></div>
         <select
           className="chip"
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
           style={{ paddingRight: 22 }}
+          aria-label="Filtrera på leverantör"
         >
           <option value="all">Alla leverantörer</option>
           <option value="anthropic">Anthropic</option>
@@ -95,7 +97,7 @@ export function ProjectsFilter({ rows }: { rows: ProjectRow[] }) {
             <th>Ägare</th>
             <th className="num">MRR</th>
             <th className="num">AI/mån</th>
-            <th style={{ width: 200 }}>Marginal</th>
+            <th>Marginal</th>
           </tr>
         </thead>
         <tbody>
@@ -134,17 +136,7 @@ export function ProjectsFilter({ rows }: { rows: ProjectRow[] }) {
                 <td>
                   <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                     {p.stack.slice(0, 2).map((s, i) => (
-                      <span
-                        key={i}
-                        className="pill no-dot"
-                        style={{
-                          padding: "1px 8px",
-                          textTransform: "none",
-                          letterSpacing: 0,
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 10.5,
-                        }}
-                      >
+                      <span key={i} className="stack-pill">
                         {s}
                       </span>
                     ))}

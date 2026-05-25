@@ -1,13 +1,16 @@
-import { listCustomers, listProjects } from "@/lib/db";
+import { getPortfolio, listCustomers, listProjects } from "@/lib/db";
+import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
+import { ExportButton } from "@/components/ExportButton";
 import { CustomersFilter } from "./filter";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
-  const [customers, projects] = await Promise.all([
+  const [customers, projects, portfolio] = await Promise.all([
     listCustomers(),
     listProjects(),
+    getPortfolio(),
   ]);
 
   const counts = new Map<string, { total: number; live: number }>();
@@ -25,15 +28,38 @@ export default async function CustomersPage() {
           <div className="page-eyebrow">Core</div>
           <h1 className="page-title">Customers</h1>
           <p className="page-sub">
-            9 kunder · 17 aktiva engagemang · 1,965M kr MRR portfölj.
+            {customers.length} kunder · {projects.length} engagemang ·{" "}
+            {fmt.ksek(portfolio.total_mrr)} MRR portfölj.
           </p>
         </div>
         <div className="actions">
-          <button className="b" type="button">
-            <Icons.Download size={14} />
-            Export CSV
-          </button>
-          <button className="b primary" type="button">
+          <ExportButton
+            filename="kunder.csv"
+            rows={[
+              [
+                "Kund",
+                "Org.nr",
+                "Klass",
+                "Account Manager",
+                "Kontrakt",
+                "MRR (kr)",
+              ],
+              ...customers.map((c) => [
+                c.name,
+                c.org_number,
+                c.cls,
+                c.am,
+                c.contract,
+                c.mrr,
+              ]),
+            ]}
+          />
+          <button
+            className="b primary"
+            type="button"
+            disabled
+            title="Kommer snart"
+          >
             <Icons.Plus size={14} />
             Ny kund
           </button>

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProject, listDailyUsageForProject, listModels } from "@/lib/db";
 import { fmt } from "@/lib/format";
-import { KpiCard, SectionHead } from "@/components/ui";
+import { KpiCard, ProviderChip, SectionHead } from "@/components/ui";
 import { LineChart } from "@/components/charts";
 
 export const dynamic = "force-dynamic";
@@ -95,15 +95,10 @@ export default async function ProjectTokensPage({
                       <div className="row">
                         {mo && (
                           <>
-                            <span
-                              className={"pdot " + mo.provider}
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 2,
-                                marginRight: 6,
-                              }}
-                            ></span>
+                            <ProviderChip
+                              provider={mo.provider}
+                              showLabel={false}
+                            />
                             {mo.display}
                           </>
                         )}

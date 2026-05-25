@@ -29,7 +29,12 @@ export default async function ModelsPage() {
           </p>
         </div>
         <div className="actions">
-          <button className="b primary" type="button">
+          <button
+            className="b primary"
+            type="button"
+            disabled
+            title="Kommer snart"
+          >
             <Icons.Plus size={14} />
             Lägg till modell
           </button>

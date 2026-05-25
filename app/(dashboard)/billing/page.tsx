@@ -41,11 +41,16 @@ export default async function BillingPage() {
           </p>
         </div>
         <div className="actions">
-          <button className="b" type="button">
+          <button className="b" type="button" disabled title="Kommer snart">
             <Icons.Ext size={14} />
             Öppna Fortnox
           </button>
-          <button className="b primary" type="button">
+          <button
+            className="b primary"
+            type="button"
+            disabled
+            title="Manuell synk kommer snart"
+          >
             <Icons.Refresh size={14} />
             Sync nu
           </button>

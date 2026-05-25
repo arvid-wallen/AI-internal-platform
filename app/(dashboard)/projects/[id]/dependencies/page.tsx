@@ -25,7 +25,12 @@ export default async function ProjectDepsPage({
             title="Externa beroenden"
             sub={`${deps.length} system · ${fmt.ksek(total)}/mån totalt`}
             actions={
-              <button className="b sm primary" type="button">
+              <button
+                className="b sm primary"
+                type="button"
+                disabled
+                title="Kommer snart"
+              >
                 <Icons.Plus size={12} />
                 Nytt beroende
               </button>
@@ -60,7 +65,13 @@ export default async function ProjectDepsPage({
                 </td>
                 <td className="num">{fmt.ksek(d.monthly_sek)}</td>
                 <td>
-                  <button className="icon-btn" type="button">
+                  <button
+                    className="icon-btn"
+                    type="button"
+                    disabled
+                    title="Kommer snart"
+                    aria-label="Fler åtgärder"
+                  >
                     <Icons.More size={14} />
                   </button>
                 </td>

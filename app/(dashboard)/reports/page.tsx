@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listCustomers, listModels, listProjects } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { MarginBar, SectionHead } from "@/components/ui";
@@ -22,7 +23,7 @@ export default async function ReportsPage() {
       const marginPct = p.monthly_revenue ? margin / p.monthly_revenue : 0;
       const spend = p.ai_cost + p.infra_cost;
       const m = modelById.get(p.active_model);
-      const colorByProv: Record<string, string> = {
+      const provColor: Record<string, string> = {
         anthropic: "#FFC9A8",
         openai: "#A9FCAE",
         google: "#6EC1E4",
@@ -38,7 +39,7 @@ export default async function ReportsPage() {
         x: marginPct,
         y: spend,
         size: spend,
-        color: colorByProv[m?.provider ?? "anthropic"] ?? "#A3A39A",
+        color: provColor[m?.provider ?? "anthropic"] ?? "#A3A39A",
       };
     });
 
@@ -89,15 +90,23 @@ export default async function ReportsPage() {
               <th className="num">AI</th>
               <th className="num">Infra</th>
               <th className="num">Marginal</th>
-              <th style={{ width: 200 }}>Margin %</th>
+              <th>Margin %</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(({ p, margin, marginPct }) => {
               const c = customerById.get(p.customer_id);
               return (
-                <tr key={p.id} className="no-hover">
-                  <td className="strong">{p.name}</td>
+                <tr key={p.id}>
+                  <td>
+                    <Link
+                      href={`/projects/${p.slug}`}
+                      className="strong"
+                      style={{ display: "block", textDecoration: "none" }}
+                    >
+                      {p.name}
+                    </Link>
+                  </td>
                   <td>{c?.name}</td>
                   <td className="num">{fmt.ksek(p.monthly_revenue)}</td>
                   <td className="num">{fmt.ksek(p.ai_cost)}</td>

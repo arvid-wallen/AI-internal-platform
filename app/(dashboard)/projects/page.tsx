@@ -1,5 +1,6 @@
 import { listCustomers, listModels, listProjects } from "@/lib/db";
 import { Icons } from "@/components/icons";
+import { ExportButton } from "@/components/ExportButton";
 import { ProjectsFilter } from "./filter";
 
 export const dynamic = "force-dynamic";
@@ -38,15 +39,43 @@ export default async function ProjectsPage() {
           <div className="page-eyebrow">Core</div>
           <h1 className="page-title">Projects</h1>
           <p className="page-sub">
-            17 projekt · 12 live · 2 bygger · 2 discovery · 1 pausad.
+            {projects.length} projekt ·{" "}
+            {projects.filter((p) => p.status === "live").length} live ·{" "}
+            {projects.filter((p) => p.status === "building").length} bygger ·{" "}
+            {projects.filter((p) => p.status === "discovery").length} discovery ·{" "}
+            {projects.filter((p) => p.status === "paused").length} pausad.
           </p>
         </div>
         <div className="actions">
-          <button className="b" type="button">
-            <Icons.Download size={14} />
-            Export CSV
-          </button>
-          <button className="b primary" type="button">
+          <ExportButton
+            filename="projekt.csv"
+            rows={[
+              [
+                "Projekt",
+                "Kund",
+                "Status",
+                "Intäkt (kr)",
+                "AI-kostnad (kr)",
+                "Infra (kr)",
+                "Ägare",
+              ],
+              ...rows.map((r) => [
+                r.name,
+                r.customer_name,
+                r.status,
+                r.monthly_revenue,
+                r.ai_cost,
+                r.infra_cost,
+                r.owner,
+              ]),
+            ]}
+          />
+          <button
+            className="b primary"
+            type="button"
+            disabled
+            title="Kommer snart"
+          >
             <Icons.Plus size={14} />
             Nytt projekt
           </button>

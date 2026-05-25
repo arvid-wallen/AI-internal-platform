@@ -38,7 +38,7 @@ export default async function ProjectCostsPage({
           />
           <div className="row gap-4 mt-3">
             <Donut data={breakdown} />
-            <div style={{ flex: 1 }}>
+            <div className="flex-1">
               {breakdown.map((b, i) => (
                 <div
                   key={i}
@@ -49,14 +49,7 @@ export default async function ProjectCostsPage({
                   }}
                 >
                   <div className="row gap-2">
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 2,
-                        background: b.color,
-                      }}
-                    ></span>
+                    <span className="swatch" style={{ background: b.color }}></span>
                     <span style={{ fontSize: 13 }}>{b.name}</span>
                   </div>
                   <div className="right">

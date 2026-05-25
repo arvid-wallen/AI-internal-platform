@@ -126,17 +126,7 @@ export default async function ProjectOverviewPage({
               <dd>
                 <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                   {p.stack.map((s, i) => (
-                    <span
-                      key={i}
-                      className="pill no-dot"
-                      style={{
-                        padding: "1px 8px",
-                        textTransform: "none",
-                        letterSpacing: 0,
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10.5,
-                      }}
-                    >
+                    <span key={i} className="stack-pill">
                       {s}
                     </span>
                   ))}
@@ -161,11 +151,8 @@ export default async function ProjectOverviewPage({
             <SectionHead title="Aktiv modell" />
             {m && (
               <div className="mp-current">
-                <span
-                  className={"pdot " + m.provider}
-                  style={{ width: 12, height: 12, borderRadius: 4 }}
-                ></span>
-                <div style={{ flex: 1 }}>
+                <ProviderChip provider={m.provider} showLabel={false} />
+                <div className="flex-1">
                   <div className="name">{m.display}</div>
                   <div
                     className="dim"

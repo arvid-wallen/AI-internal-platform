@@ -55,14 +55,7 @@ export default async function ProjectDetailLayout({
         <div className="left">
           {c && <div className={"detail-mark dm-" + c.mark}>{c.init}</div>}
           <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                marginBottom: 4,
-              }}
-            >
+            <div className="row" style={{ gap: 12, marginBottom: 4 }}>
               <h1 className="title">{p.name}</h1>
               <StatusPill status={p.status} />
               {!p.healthy && (
@@ -108,7 +101,7 @@ export default async function ProjectDetailLayout({
             <Icons.Ext size={14} />
             Öppna i GitHub
           </a>
-          <button className="b" type="button">
+          <button className="b" type="button" disabled title="Kommer snart">
             <Icons.Edit size={14} />
             Redigera
           </button>
