@@ -184,3 +184,61 @@ export interface PortfolioTotals {
   margin: number;
   margin_pct: number;
 }
+
+// ===== Card / SaaS cost import =====
+// Matches the costs_monthly.cost_category and source CHECK constraints.
+
+export type CostCategory =
+  | "hosting"
+  | "database"
+  | "storage"
+  | "cdn"
+  | "third_party_api"
+  | "domain"
+  | "other";
+
+export type CostSource = "api" | "manual" | "csv_import";
+
+// A vendor classification rule (card_vendor_rules table). match_pattern is a
+// lowercase substring tested against the normalized merchant text.
+export interface VendorRule {
+  id: string;
+  match_pattern: string;
+  canonical_vendor: string;
+  cost_category: CostCategory | null;
+  is_software: boolean;
+  is_api_usage: boolean; // true => already tracked by token sync; excluded by default
+  default_project_id: string | null; // project uuid
+}
+
+export type ClassifySource = "rule" | "ai" | "manual" | "unknown";
+
+// One aggregated, reviewable import row (per vendor/category/month/project).
+export interface CardImportRow {
+  key: string; // stable client key
+  vendor: string;
+  cost_category: CostCategory;
+  period_month: string; // YYYY-MM-01
+  amount_sek: number; // summed across the underlying transactions
+  txn_count: number;
+  project_id: string | null; // project uuid; null = company-wide
+  is_software: boolean;
+  is_api_usage: boolean;
+  include: boolean; // default row selection
+  source: ClassifySource;
+  confidence: number | null; // 0..1 for AI-classified rows
+  sample_text: string; // representative raw merchant text
+  raw_texts: string[]; // all underlying merchant strings
+}
+
+export interface MonthlyVendorCost {
+  vendor: string;
+  amount_sek: number;
+  cost_category: string | null;
+}
+
+export interface SoftwareCostSummary {
+  month: string; // YYYY-MM-01 actually shown
+  total_sek: number;
+  by_vendor: MonthlyVendorCost[];
+}
