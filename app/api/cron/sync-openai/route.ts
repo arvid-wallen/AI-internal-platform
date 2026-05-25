@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
           .slice(0, 10);
         for (const c of bucket.results) {
           const k = `${c.project_id ?? "_"}|${usageDate}`;
-          costByKey.set(k, (costByKey.get(k) ?? 0) + c.amount.value);
+          costByKey.set(k, (costByKey.get(k) ?? 0) + Number(c.amount.value));
         }
       }
 
@@ -117,11 +117,11 @@ export async function GET(request: NextRequest) {
             model_id,
             provider_id: openaiProvider?.id ?? null,
             usage_date: usageDate,
-            input_tokens: r.input_tokens,
-            output_tokens: r.output_tokens,
-            cache_read_tokens: r.input_cached_tokens,
+            input_tokens: Number(r.input_tokens ?? 0),
+            output_tokens: Number(r.output_tokens ?? 0),
+            cache_read_tokens: Number(r.input_cached_tokens ?? 0),
             cache_write_tokens: 0,
-            request_count: r.num_model_requests,
+            request_count: Number(r.num_model_requests ?? 0),
             cost_usd,
             cost_sek: Number((cost_usd * usdSek).toFixed(2)),
             source_workspace_id: r.project_id,
