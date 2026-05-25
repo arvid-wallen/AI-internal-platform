@@ -7,13 +7,10 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 
 const AUTH_BASE = "https://apps.fortnox.se/oauth-v1";
 const API_BASE = "https://api.fortnox.se/3";
-export const FORTNOX_SCOPES = [
-  "companyinformation",
-  "invoice",
-  "customer",
-  "article",
-  "settings",
-].join(" ");
+// Least-privilege: we only read invoices + customers, and resolve article
+// codes for project mapping. Dropping "settings"/"companyinformation" (unused
+// and admin-gated) so a non-system-admin may be able to authorize.
+export const FORTNOX_SCOPES = ["invoice", "customer", "article"].join(" ");
 
 export interface FortnoxTokens {
   access_token: string;
