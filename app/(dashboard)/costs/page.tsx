@@ -1,21 +1,28 @@
-import { getPortfolio, listDependencies } from "@/lib/db";
+import Link from "next/link";
+import { getPortfolio, getSoftwareCosts } from "@/lib/db";
 import { fmt } from "@/lib/format";
 import { KpiCard, SectionHead } from "@/components/ui";
+import { Icons } from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
+const CATEGORY_LABELS: Record<string, string> = {
+  hosting: "Hosting",
+  database: "Databas",
+  storage: "Lagring",
+  cdn: "CDN",
+  third_party_api: "SaaS / API",
+  domain: "Domän",
+  other: "Övrigt",
+};
+
 export default async function CostsPage() {
-  const [portfolio, deps] = await Promise.all([
+  const [portfolio, software] = await Promise.all([
     getPortfolio(),
-    listDependencies(),
+    getSoftwareCosts(),
   ]);
-  const byVendor = new Map<string, number>();
-  for (const d of deps) {
-    byVendor.set(d.vendor, (byVendor.get(d.vendor) ?? 0) + d.monthly_sek);
-  }
-  const vendorRows = [...byVendor.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([vendor, cost]) => ({ vendor, cost }));
+  const total = software.by_vendor.reduce((s, x) => s + x.amount_sek, 0);
+  const monthLabel = fmt.date(software.month);
 
   return (
     <div className="page">
@@ -24,7 +31,7 @@ export default async function CostsPage() {
           <div className="page-eyebrow">Finance</div>
           <h1 className="page-title">Costs</h1>
           <p className="page-sub">
-            Sammanställning av infrastruktur- och leverantörskostnader.
+            Sammanställning av infrastruktur- och mjukvarukostnader.
           </p>
         </div>
       </div>
@@ -37,13 +44,14 @@ export default async function CostsPage() {
         />
         <KpiCard
           icon="Server"
-          label="Infrastruktur"
-          value={fmt.ksek(portfolio.infra_cost)}
+          label="Mjukvara / SaaS"
+          value={fmt.ksek(software.total_sek)}
+          hint={monthLabel}
         />
         <KpiCard
           icon="Wallet"
           label="Total kostnad"
-          value={fmt.ksek(portfolio.ai_cost + portfolio.infra_cost)}
+          value={fmt.ksek(portfolio.ai_cost + software.total_sek)}
         />
         <KpiCard
           icon="Coins"
@@ -54,32 +62,47 @@ export default async function CostsPage() {
 
       <div className="card flush mt-4">
         <div style={{ padding: "16px 18px 0" }}>
-          <SectionHead title="Per leverantör" />
+          <SectionHead
+            title="Per leverantör"
+            sub={`Mjukvarukostnader för ${monthLabel}`}
+            actions={
+              <Link className="b sm" href="/costs/import">
+                <Icons.Upload size={12} />
+                Importera kortfil
+              </Link>
+            }
+          />
         </div>
         <table className="tbl">
           <thead>
             <tr>
               <th>Leverantör</th>
+              <th>Kategori</th>
               <th className="num">SEK/mån</th>
               <th>Andel</th>
             </tr>
           </thead>
           <tbody>
-            {vendorRows.map((r) => {
-              const total = vendorRows.reduce((s, x) => s + x.cost, 0);
-              const pct = total ? (r.cost / total) * 100 : 0;
+            {software.by_vendor.map((r) => {
+              const pct = total ? (r.amount_sek / total) * 100 : 0;
               return (
                 <tr key={r.vendor} className="no-hover">
                   <td className="strong">{r.vendor}</td>
-                  <td className="num">{fmt.ksek(r.cost)}</td>
+                  <td className="dim">
+                    {r.cost_category
+                      ? CATEGORY_LABELS[r.cost_category] ?? r.cost_category
+                      : "—"}
+                  </td>
+                  <td className="num">{fmt.ksek(r.amount_sek)}</td>
                   <td className="tnum dim">{pct.toFixed(0)}%</td>
                 </tr>
               );
             })}
-            {vendorRows.length === 0 && (
+            {software.by_vendor.length === 0 && (
               <tr className="no-hover">
-                <td colSpan={3} className="empty">
-                  Inga registrerade leverantörskostnader.
+                <td colSpan={4} className="empty">
+                  Inga registrerade mjukvarukostnader. Importera kortfilen för
+                  att komma igång.
                 </td>
               </tr>
             )}

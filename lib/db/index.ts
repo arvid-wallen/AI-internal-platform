@@ -38,9 +38,11 @@ import type {
   Integration,
   Invoice,
   ModelHistoryEntry,
+  MonthlyVendorCost,
   Note,
   PortfolioTotals,
   Project,
+  SoftwareCostSummary,
   SyncRun,
   TeamMember,
   Update,
@@ -197,6 +199,56 @@ export async function getPortfolio(): Promise<PortfolioTotals> {
     margin: total_mrr - ai_cost - infra_cost,
     margin_pct: total_mrr ? (total_mrr - ai_cost - infra_cost) / total_mrr : 0,
   };
+}
+
+// Software/SaaS costs straight from costs_monthly (includes company-wide rows
+// with project_id = NULL, which the per-project P&L view omits). Defaults to the
+// most recent month that has any cost data so a fresh import is visible.
+export async function getSoftwareCosts(
+  isoMonth?: string,
+): Promise<SoftwareCostSummary> {
+  const firstOfThisMonth = () => {
+    const d = new Date();
+    d.setUTCDate(1);
+    return d.toISOString().slice(0, 10);
+  };
+  if (!isSupabaseConfigured()) {
+    return { month: isoMonth ?? firstOfThisMonth(), total_sek: 0, by_vendor: [] };
+  }
+  const supabase = await createSupabaseServer();
+  let month = isoMonth ?? "";
+  if (!month) {
+    const { data: latest } = await supabase
+      .from("costs_monthly")
+      .select("period_month")
+      .order("period_month", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    month = String(latest?.period_month ?? firstOfThisMonth());
+  }
+  const { data, error } = await supabase
+    .from("costs_monthly")
+    .select("vendor, amount_sek, cost_category")
+    .eq("period_month", month);
+  if (error || !data) return { month, total_sek: 0, by_vendor: [] };
+
+  const byVendor = new Map<string, { amount: number; cat: string | null }>();
+  let total = 0;
+  for (const r of data) {
+    const amt = Number(r.amount_sek ?? 0);
+    total += amt;
+    const v = (r.vendor as string) ?? "—";
+    const cur = byVendor.get(v) ?? {
+      amount: 0,
+      cat: (r.cost_category as string) ?? null,
+    };
+    cur.amount += amt;
+    byVendor.set(v, cur);
+  }
+  const by_vendor: MonthlyVendorCost[] = [...byVendor.entries()]
+    .map(([vendor, x]) => ({ vendor, amount_sek: x.amount, cost_category: x.cat }))
+    .sort((a, b) => b.amount_sek - a.amount_sek);
+  return { month, total_sek: total, by_vendor };
 }
 
 // ============ Adapters: DB row → domain shape ============
