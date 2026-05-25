@@ -1,34 +1,7 @@
-// Supabase-backed data layer. Pages can opt into this incrementally —
-// it mirrors lib/data.ts (mock) but returns async Supabase results.
-//
-// Migration pattern per page:
-//   - import { customerById } from "@/lib/data"   →  import { getCustomer } from "@/lib/db"
-//   - const c = customerById(id)                  →  const c = await getCustomer(id)
-//
-// When NEXT_PUBLIC_SUPABASE_URL is unset, every function returns the mock-data
-// equivalent so dev works without Supabase.
+// Supabase-backed data layer. All reads go through here. Returns live data
+// only — empty arrays / null when there is no data yet (no mock fallback).
 
 import { createSupabaseServer } from "@/lib/supabase/server";
-import {
-  CUSTOMERS as MOCK_CUSTOMERS,
-  PROJECTS as MOCK_PROJECTS,
-  MODELS as MOCK_MODELS,
-  DAILY_USAGE as MOCK_USAGE,
-  DEPENDENCIES as MOCK_DEPS,
-  NOTES as MOCK_NOTES,
-  INCIDENTS as MOCK_INCIDENTS,
-  INVOICES as MOCK_INVOICES,
-  TEAM as MOCK_TEAM,
-  INTEGRATIONS as MOCK_INTEGRATIONS,
-  SYNC_RUNS as MOCK_SYNC_RUNS,
-  modelById as mockModelById,
-  customerById as mockCustomerById,
-  projectById as mockProjectById,
-  projectBySlug as mockProjectBySlug,
-  depsFor as mockDepsFor,
-  modelHistoryFor as mockModelHistoryFor,
-  computePortfolio as mockPortfolio,
-} from "@/lib/data";
 import type {
   AIModel,
   Customer,
@@ -46,8 +19,6 @@ import type {
   Update,
 } from "@/lib/types";
 
-const isSupabaseConfigured = () => !!process.env.NEXT_PUBLIC_SUPABASE_URL;
-
 // Domain project ids are "p-" + slug; strip the prefix to get the DB slug.
 const stripP = (idOrSlug: string) =>
   idOrSlug.startsWith("p-") ? idOrSlug.slice(2) : idOrSlug;
@@ -55,26 +26,22 @@ const stripP = (idOrSlug: string) =>
 // ============ Customers ============
 
 export async function listCustomers(): Promise<Customer[]> {
-  if (!isSupabaseConfigured()) return MOCK_CUSTOMERS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("customers")
     .select("*, account_manager:team_members(full_name)")
     .order("name");
-  if (error || !data) return MOCK_CUSTOMERS;
-  return data.map(toCustomer);
+  return (data ?? []).map((r) => toCustomer(r as unknown as DbCustomer));
 }
 
 export async function getCustomer(idOrSlug: string): Promise<Customer | null> {
-  if (!isSupabaseConfigured()) return mockCustomerById(idOrSlug) ?? null;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("customers")
     .select("*, account_manager:team_members(full_name)")
     .eq("slug", idOrSlug)
     .maybeSingle();
-  if (error || !data) return mockCustomerById(idOrSlug) ?? null;
-  return toCustomer(data as unknown as DbCustomer);
+  return data ? toCustomer(data as unknown as DbCustomer) : null;
 }
 
 // ============ Projects ============
@@ -83,72 +50,57 @@ const PROJECT_SELECT =
   "*, customer:customers(slug), project_models(is_active, model:ai_models(model_id))";
 
 export async function listProjects(): Promise<Project[]> {
-  if (!isSupabaseConfigured()) return MOCK_PROJECTS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("projects")
     .select(PROJECT_SELECT)
     .order("name");
-  if (error || !data) return MOCK_PROJECTS;
-  return (data as unknown as DbProject[]).map(toProject);
+  return (data as unknown as DbProject[] | null ?? []).map(toProject);
 }
 
 export async function getProject(idOrSlug: string): Promise<Project | null> {
-  const mockHit = () =>
-    mockProjectById(idOrSlug) ?? mockProjectBySlug(stripP(idOrSlug)) ?? null;
-  if (!isSupabaseConfigured()) return mockHit();
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("projects")
     .select(PROJECT_SELECT)
     .eq("slug", stripP(idOrSlug))
     .maybeSingle();
-  if (error || !data) return mockHit();
-  return toProject(data as unknown as DbProject);
+  return data ? toProject(data as unknown as DbProject) : null;
 }
 
 export async function listProjectsForCustomer(
   customerIdOrSlug: string,
 ): Promise<Project[]> {
-  if (!isSupabaseConfigured()) {
-    return MOCK_PROJECTS.filter((p) => p.customer_id === customerIdOrSlug);
-  }
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("projects")
     .select(
       "*, customer:customers!inner(slug), project_models(is_active, model:ai_models(model_id))",
     )
     .eq("customer.slug", customerIdOrSlug)
     .order("name");
-  if (error || !data) {
-    return MOCK_PROJECTS.filter((p) => p.customer_id === customerIdOrSlug);
-  }
-  return (data as unknown as DbProject[]).map(toProject);
+  return (data as unknown as DbProject[] | null ?? []).map(toProject);
 }
 
 // ============ Models ============
 
 export async function listModels(): Promise<AIModel[]> {
-  if (!isSupabaseConfigured()) return MOCK_MODELS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("ai_models")
     .select("*, provider:ai_providers(slug)")
     .order("released_at", { ascending: false });
-  if (error || !data) return MOCK_MODELS;
-  return data.map(toModel);
+  return (data ?? []).map((r) => toModel(r as unknown as DbModel));
 }
 
 export async function getModel(modelIdString: string): Promise<AIModel | null> {
-  if (!isSupabaseConfigured()) return mockModelById(modelIdString) ?? null;
   const supabase = await createSupabaseServer();
   const { data } = await supabase
     .from("ai_models")
     .select("*, provider:ai_providers(slug)")
     .eq("model_id", modelIdString)
     .maybeSingle();
-  return data ? toModel(data) : mockModelById(modelIdString) ?? null;
+  return data ? toModel(data as unknown as DbModel) : null;
 }
 
 // ============ Token usage ============
@@ -157,8 +109,6 @@ export async function listDailyUsageForProject(
   projectId: string,
   days = 60,
 ): Promise<DailyUsage[]> {
-  if (!isSupabaseConfigured())
-    return MOCK_USAGE.filter((u) => u.project_id === projectId);
   const supabase = await createSupabaseServer();
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);
@@ -174,23 +124,29 @@ export async function listDailyUsageForProject(
 // ============ Portfolio aggregate ============
 
 export async function getPortfolio(): Promise<PortfolioTotals> {
-  if (!isSupabaseConfigured()) return mockPortfolio();
   const supabase = await createSupabaseServer();
   const thisMonth = new Date();
   thisMonth.setUTCDate(1);
   const isoMonth = thisMonth.toISOString().slice(0, 10);
-  const { data } = await supabase
-    .from("mv_project_pnl_monthly")
-    .select("*")
-    .eq("period_month", isoMonth);
-  if (!data || data.length === 0) return mockPortfolio();
-  const total_mrr = data.reduce((s, r) => s + Number(r.revenue_sek), 0);
-  const ai_cost = data.reduce((s, r) => s + Number(r.ai_cost_sek), 0);
-  const infra_cost = data.reduce((s, r) => s + Number(r.infra_cost_sek), 0);
+
+  const [{ data: pnl }, projects, live, customers] = await Promise.all([
+    supabase.from("mv_project_pnl_monthly").select("*").eq("period_month", isoMonth),
+    supabase.from("projects").select("*", { count: "exact", head: true }),
+    supabase
+      .from("projects")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "live"),
+    supabase.from("customers").select("*", { count: "exact", head: true }),
+  ]);
+
+  const rows = pnl ?? [];
+  const total_mrr = rows.reduce((s, r) => s + Number(r.revenue_sek), 0);
+  const ai_cost = rows.reduce((s, r) => s + Number(r.ai_cost_sek), 0);
+  const infra_cost = rows.reduce((s, r) => s + Number(r.infra_cost_sek), 0);
   return {
-    project_count: data.length,
-    live_count: data.length,
-    customer_count: new Set(data.map((r) => r.customer_id)).size,
+    project_count: projects.count ?? 0,
+    live_count: live.count ?? 0,
+    customer_count: customers.count ?? 0,
     total_mrr,
     ai_cost,
     infra_cost,
@@ -213,13 +169,13 @@ interface DbCustomer {
 
 function toCustomer(r: DbCustomer): Customer {
   return {
-    id: r.slug,                         // use slug as id (matches lib/data shape)
+    id: r.slug, // use slug as id (matches lib/data shape)
     name: r.name,
     org_number: r.org_number ?? "",
     cls: r.customer_class ?? "C",
     am: r.account_manager?.full_name ?? "—",
     contract: r.contract_status,
-    mrr: 0,                              // derive later from invoices view
+    mrr: 0, // derive later from invoices view
     mark: pickMark(r.slug),
     init: r.name[0]?.toUpperCase() ?? "?",
   };
@@ -267,7 +223,7 @@ function toProject(r: DbProject): Project {
     active_model: activeModel?.model_id ?? "",
     monthly_revenue: Number(r.monthly_revenue_sek ?? 0),
     infra_cost: Number(r.monthly_infra_budget_sek ?? 0),
-    ai_cost: 0,                          // aggregated from token_usage_daily
+    ai_cost: 0, // aggregated from token_usage_daily
     owner: "—",
     healthy: true,
   };
@@ -320,15 +276,7 @@ function toUsage(r: DbUsage): DailyUsage {
   };
 }
 
-const MARKS = [
-  "mint",
-  "sky",
-  "tomato",
-  "lilac",
-  "butter",
-  "apricot",
-  "blush",
-];
+const MARKS = ["mint", "sky", "tomato", "lilac", "butter", "apricot", "blush"];
 function pickMark(slug: string): string {
   let h = 0;
   for (const c of slug) h = (h * 31 + c.charCodeAt(0)) | 0;
@@ -344,19 +292,15 @@ export interface PortfolioDayRow {
   byProvider: { anthropic: number; openai: number; google: number };
 }
 
-export async function getDailyPortfolio(
-  days = 60,
-): Promise<PortfolioDayRow[]> {
-  if (!isSupabaseConfigured()) {
-    const { DAILY_PORTFOLIO } = await import("@/lib/data");
-    return DAILY_PORTFOLIO.slice(-days);
-  }
+export async function getDailyPortfolio(days = 60): Promise<PortfolioDayRow[]> {
   const supabase = await createSupabaseServer();
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);
   const { data } = await supabase
     .from("token_usage_daily")
-    .select("usage_date, cost_sek, input_tokens, output_tokens, provider:ai_providers(slug)")
+    .select(
+      "usage_date, cost_sek, input_tokens, output_tokens, provider:ai_providers(slug)",
+    )
     .gte("usage_date", since.toISOString().slice(0, 10))
     .order("usage_date");
 
@@ -405,29 +349,6 @@ export interface TopProjectRow {
 export async function getTopProjectsByAICost(
   limit = 6,
 ): Promise<TopProjectRow[]> {
-  if (!isSupabaseConfigured()) {
-    const data = await import("@/lib/data");
-    return [...data.PROJECTS]
-      .sort((a, b) => b.ai_cost - a.ai_cost)
-      .slice(0, limit)
-      .map((p) => {
-        const c = data.customerById(p.customer_id);
-        const m = data.modelById(p.active_model);
-        return {
-          project_id: p.id,
-          project_slug: p.slug,
-          project_name: p.name,
-          customer_name: c?.name ?? "",
-          monthly_revenue: p.monthly_revenue,
-          ai_cost: p.ai_cost,
-          infra_cost: p.infra_cost,
-          active_model_id: m?.id ?? "",
-          active_model_display: m?.display ?? "",
-          active_model_provider: m?.provider ?? "anthropic",
-        };
-      });
-  }
-
   const supabase = await createSupabaseServer();
   const thisMonth = new Date();
   thisMonth.setUTCDate(1);
@@ -508,7 +429,7 @@ export async function getTopProjectsByAICost(
     .sort((a, b) => b.ai_cost - a.ai_cost);
 }
 
-// ============ Recent updates feed ============
+// ============ Recent updates feed (derived from real events) ============
 
 export interface UpdateRow {
   when: string;
@@ -520,28 +441,151 @@ export interface UpdateRow {
 }
 
 export async function getRecentUpdates(limit = 6): Promise<UpdateRow[]> {
-  // No `updates` table yet — surface mock-style activity from model_switches +
-  // incidents + recent invoice events. For now, fall back to lib/data.UPDATES.
-  const data = await import("@/lib/data");
-  return data.UPDATES.slice(0, limit).map((u) => {
-    const p = data.projectById(u.project);
-    return {
-      when: u.when,
-      actor: u.actor,
-      kind: u.kind,
-      project_id: u.project,
+  const supabase = await createSupabaseServer();
+  const [switches, incidents, invoices] = await Promise.all([
+    supabase
+      .from("model_switches")
+      .select(
+        "switched_at, reason, to_model:ai_models!to_model_id(model_id), actor:team_members(full_name), project:projects(slug, name)",
+      )
+      .order("switched_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("incidents")
+      .select("occurred_at, title, project:projects(slug, name)")
+      .order("occurred_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("invoices")
+      .select("invoice_date, invoice_number, status, customer:customers(name)")
+      .order("invoice_date", { ascending: false })
+      .limit(limit),
+  ]);
+
+  const out: Array<UpdateRow & { sort: string }> = [];
+
+  for (const r of (switches.data ?? []) as unknown as Array<{
+    switched_at: string;
+    reason: string | null;
+    to_model?: { model_id?: string | null } | { model_id?: string | null }[] | null;
+    actor?: { full_name?: string | null } | { full_name?: string | null }[] | null;
+    project?:
+      | { slug?: string | null; name?: string | null }
+      | Array<{ slug?: string | null; name?: string | null }>
+      | null;
+  }>) {
+    const m = one(r.to_model);
+    const a = one(r.actor);
+    const p = one(r.project);
+    out.push({
+      sort: r.switched_at,
+      when: fmtTs(r.switched_at),
+      actor: a?.full_name ?? "—",
+      kind: "model",
+      project_id: p?.slug ? "p-" + p.slug : "",
       project_name: p?.name ?? "",
-      body: u.body,
-    };
-  });
+      body: `Bytte modell → ${m?.model_id ?? "?"}${r.reason ? " · " + r.reason : ""}`,
+    });
+  }
+
+  for (const r of (incidents.data ?? []) as unknown as Array<{
+    occurred_at: string;
+    title: string;
+    project?:
+      | { slug?: string | null; name?: string | null }
+      | Array<{ slug?: string | null; name?: string | null }>
+      | null;
+  }>) {
+    const p = one(r.project);
+    out.push({
+      sort: r.occurred_at,
+      when: fmtTs(r.occurred_at),
+      actor: "—",
+      kind: "incident",
+      project_id: p?.slug ? "p-" + p.slug : "",
+      project_name: p?.name ?? "",
+      body: r.title,
+    });
+  }
+
+  for (const r of (invoices.data ?? []) as unknown as Array<{
+    invoice_date: string | null;
+    invoice_number: string | null;
+    status: string | null;
+    customer?: { name?: string | null } | Array<{ name?: string | null }> | null;
+  }>) {
+    const c = one(r.customer);
+    out.push({
+      sort: r.invoice_date ?? "",
+      when: r.invoice_date ?? "",
+      actor: "Fortnox",
+      kind: "invoice",
+      project_id: "",
+      project_name: c?.name ?? "",
+      body: `Faktura ${r.invoice_number ?? ""} · ${r.status ?? ""}`,
+    });
+  }
+
+  return out
+    .sort((a, b) => (a.sort < b.sort ? 1 : a.sort > b.sort ? -1 : 0))
+    .slice(0, limit)
+    .map(({ sort: _sort, ...rest }) => rest);
 }
 
 export async function listUpdatesForProject(
   projectId: string,
 ): Promise<Update[]> {
-  // No `updates` table yet (see getRecentUpdates) — derive from mock UPDATES.
-  const { UPDATES } = await import("@/lib/data");
-  return UPDATES.filter((u) => u.project === projectId);
+  const supabase = await createSupabaseServer();
+  const slug = stripP(projectId);
+  const [switches, incidents] = await Promise.all([
+    supabase
+      .from("model_switches")
+      .select(
+        "switched_at, reason, to_model:ai_models!to_model_id(model_id), actor:team_members(full_name), project:projects!inner(slug)",
+      )
+      .eq("project.slug", slug)
+      .order("switched_at", { ascending: false }),
+    supabase
+      .from("incidents")
+      .select("occurred_at, title, project:projects!inner(slug)")
+      .eq("project.slug", slug)
+      .order("occurred_at", { ascending: false }),
+  ]);
+
+  const out: Array<Update & { sort: string }> = [];
+  for (const r of (switches.data ?? []) as unknown as Array<{
+    switched_at: string;
+    reason: string | null;
+    to_model?: { model_id?: string | null } | { model_id?: string | null }[] | null;
+    actor?: { full_name?: string | null } | { full_name?: string | null }[] | null;
+  }>) {
+    const m = one(r.to_model);
+    const a = one(r.actor);
+    out.push({
+      sort: r.switched_at,
+      when: fmtTs(r.switched_at),
+      actor: a?.full_name ?? "—",
+      kind: "model",
+      project: projectId,
+      body: `Bytte modell → ${m?.model_id ?? "?"}${r.reason ? " · " + r.reason : ""}`,
+    });
+  }
+  for (const r of (incidents.data ?? []) as unknown as Array<{
+    occurred_at: string;
+    title: string;
+  }>) {
+    out.push({
+      sort: r.occurred_at,
+      when: fmtTs(r.occurred_at),
+      actor: "—",
+      kind: "incident",
+      project: projectId,
+      body: r.title,
+    });
+  }
+  return out
+    .sort((a, b) => (a.sort < b.sort ? 1 : a.sort > b.sort ? -1 : 0))
+    .map(({ sort: _sort, ...rest }) => rest);
 }
 
 // ============ Shared helpers ============
@@ -587,30 +631,26 @@ function toDependency(r: DbDependency): Dependency {
 }
 
 export async function listDependencies(): Promise<Dependency[]> {
-  if (!isSupabaseConfigured()) return MOCK_DEPS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("dependencies")
     .select("name, vendor, type, monthly_cost_sek, is_critical, project:projects(slug)")
     .order("name");
-  if (error || !data) return MOCK_DEPS;
-  return (data as unknown as DbDependency[]).map(toDependency);
+  return (data as unknown as DbDependency[] | null ?? []).map(toDependency);
 }
 
 export async function listDependenciesForProject(
   projectId: string,
 ): Promise<Dependency[]> {
-  if (!isSupabaseConfigured()) return mockDepsFor(projectId);
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("dependencies")
     .select(
       "name, vendor, type, monthly_cost_sek, is_critical, project:projects!inner(slug)",
     )
     .eq("project.slug", stripP(projectId))
     .order("name");
-  if (error || !data) return mockDepsFor(projectId);
-  return (data as unknown as DbDependency[]).map(toDependency);
+  return (data as unknown as DbDependency[] | null ?? []).map(toDependency);
 }
 
 // ============ Notes ============
@@ -641,22 +681,17 @@ const NOTE_SELECT =
   "id, title, content, category, created_at, author:team_members(full_name)";
 
 export async function listGlobalNotes(): Promise<Note[]> {
-  if (!isSupabaseConfigured())
-    return MOCK_NOTES.filter((n) => n.parent === "global");
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("notes")
     .select(NOTE_SELECT)
     .eq("parent_type", "global")
     .order("pinned", { ascending: false })
     .order("created_at", { ascending: false });
-  if (error || !data) return MOCK_NOTES.filter((n) => n.parent === "global");
-  return (data as unknown as DbNote[]).map((r) => toNote(r, "global"));
+  return (data as unknown as DbNote[] | null ?? []).map((r) => toNote(r, "global"));
 }
 
 export async function listNotesForProject(projectId: string): Promise<Note[]> {
-  if (!isSupabaseConfigured())
-    return MOCK_NOTES.filter((n) => n.parent === projectId);
   const supabase = await createSupabaseServer();
   const { data: proj } = await supabase
     .from("projects")
@@ -664,14 +699,15 @@ export async function listNotesForProject(projectId: string): Promise<Note[]> {
     .eq("slug", stripP(projectId))
     .maybeSingle();
   if (!proj) return [];
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("notes")
     .select(NOTE_SELECT)
     .eq("parent_type", "project")
     .eq("parent_id", (proj as { id: string }).id)
     .order("created_at", { ascending: false });
-  if (error || !data) return [];
-  return (data as unknown as DbNote[]).map((r) => toNote(r, projectId));
+  return (data as unknown as DbNote[] | null ?? []).map((r) =>
+    toNote(r, projectId),
+  );
 }
 
 // ============ Model history (from model_switches) ============
@@ -686,17 +722,15 @@ interface DbModelSwitch {
 export async function listModelSwitchesForProject(
   projectId: string,
 ): Promise<ModelHistoryEntry[]> {
-  if (!isSupabaseConfigured()) return mockModelHistoryFor(projectId);
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("model_switches")
     .select(
       "switched_at, reason, to_model:ai_models!to_model_id(model_id), actor:team_members(full_name), project:projects!inner(slug)",
     )
     .eq("project.slug", stripP(projectId))
     .order("switched_at", { ascending: false });
-  if (error || !data) return mockModelHistoryFor(projectId);
-  return (data as unknown as DbModelSwitch[]).map((r) => {
+  return (data as unknown as DbModelSwitch[] | null ?? []).map((r) => {
     const m = one(r.to_model);
     const a = one(r.actor);
     return {
@@ -738,16 +772,14 @@ function toIncident(r: DbIncident): Incident {
 }
 
 export async function listIncidents(): Promise<Incident[]> {
-  if (!isSupabaseConfigured()) return MOCK_INCIDENTS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("incidents")
     .select(
       "ref, severity, title, summary, occurred_at, resolved_at, project:projects(slug)",
     )
     .order("occurred_at", { ascending: false });
-  if (error || !data) return MOCK_INCIDENTS;
-  return (data as unknown as DbIncident[]).map(toIncident);
+  return (data as unknown as DbIncident[] | null ?? []).map(toIncident);
 }
 
 // ============ Invoices ============
@@ -787,32 +819,26 @@ const INVOICE_SELECT =
   "id, fortnox_invoice_id, invoice_number, invoice_date, due_date, total_excl_vat_sek, total_incl_vat_sek, status, recurring, customer:customers(slug), project:projects(slug)";
 
 export async function listInvoices(): Promise<Invoice[]> {
-  if (!isSupabaseConfigured()) return MOCK_INVOICES;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("invoices")
     .select(INVOICE_SELECT)
     .order("invoice_date", { ascending: false });
-  if (error || !data) return MOCK_INVOICES;
-  return (data as unknown as DbInvoice[]).map(toInvoice);
+  return (data as unknown as DbInvoice[] | null ?? []).map(toInvoice);
 }
 
 export async function listInvoicesForCustomer(
   customerId: string,
 ): Promise<Invoice[]> {
-  if (!isSupabaseConfigured())
-    return MOCK_INVOICES.filter((i) => i.customer_id === customerId);
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("invoices")
     .select(
       "id, fortnox_invoice_id, invoice_number, invoice_date, due_date, total_excl_vat_sek, total_incl_vat_sek, status, recurring, customer:customers!inner(slug), project:projects(slug)",
     )
     .eq("customer.slug", customerId)
     .order("invoice_date", { ascending: false });
-  if (error || !data)
-    return MOCK_INVOICES.filter((i) => i.customer_id === customerId);
-  return (data as unknown as DbInvoice[]).map(toInvoice);
+  return (data as unknown as DbInvoice[] | null ?? []).map(toInvoice);
 }
 
 // ============ Team ============
@@ -838,14 +864,12 @@ function toTeamMember(r: DbTeamMember): TeamMember {
 }
 
 export async function listTeam(): Promise<TeamMember[]> {
-  if (!isSupabaseConfigured()) return MOCK_TEAM;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("team_members")
     .select("id, email, full_name, role, is_active")
     .order("full_name");
-  if (error || !data) return MOCK_TEAM;
-  return (data as unknown as DbTeamMember[]).map(toTeamMember);
+  return (data as unknown as DbTeamMember[] | null ?? []).map(toTeamMember);
 }
 
 // ============ Integrations ============
@@ -891,15 +915,13 @@ function toIntegration(r: DbIntegration): Integration {
 }
 
 export async function listIntegrations(): Promise<Integration[]> {
-  if (!isSupabaseConfigured()) return MOCK_INTEGRATIONS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("integrations_credentials")
     .select(
       "provider_slug, metadata, last_synced_at, last_sync_status, last_sync_error",
     );
-  if (error || !data) return MOCK_INTEGRATIONS;
-  return (data as unknown as DbIntegration[]).map(toIntegration);
+  return (data as unknown as DbIntegration[] | null ?? []).map(toIntegration);
 }
 
 // ============ Sync runs ============
@@ -939,17 +961,15 @@ function toSyncRun(r: DbSyncRun): SyncRun {
 }
 
 export async function listSyncRuns(limit = 12): Promise<SyncRun[]> {
-  if (!isSupabaseConfigured()) return MOCK_SYNC_RUNS;
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("integration_sync_runs")
     .select(
       "id, started_at, finished_at, status, records_ingested, error_message, integration:integrations_credentials(provider_slug)",
     )
     .order("started_at", { ascending: false })
     .limit(limit);
-  if (error || !data) return MOCK_SYNC_RUNS;
-  return (data as unknown as DbSyncRun[]).map(toSyncRun);
+  return (data as unknown as DbSyncRun[] | null ?? []).map(toSyncRun);
 }
 
 // ============ Portfolio token totals ============
@@ -963,13 +983,6 @@ export interface PortfolioTokenTotals {
 export async function getPortfolioTokenTotals(
   days = 60,
 ): Promise<PortfolioTokenTotals> {
-  if (!isSupabaseConfigured()) {
-    return {
-      cost_sek: MOCK_USAGE.reduce((s, u) => s + u.cost_sek, 0),
-      tokens_in: MOCK_USAGE.reduce((s, u) => s + u.tokens_in, 0),
-      tokens_out: MOCK_USAGE.reduce((s, u) => s + u.tokens_out, 0),
-    };
-  }
   const supabase = await createSupabaseServer();
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - days);

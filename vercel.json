@@ -1,13 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/cron/refresh-fx",          "schedule": "0 4 * * *" },
-    { "path": "/api/cron/sync-anthropic",      "schedule": "10 4 * * *" },
-    { "path": "/api/cron/sync-openai",         "schedule": "20 4 * * *" },
-    { "path": "/api/cron/sync-google-billing", "schedule": "30 4 * * *" },
-    { "path": "/api/cron/sync-fortnox",        "schedule": "0 5 * * *" },
-    { "path": "/api/cron/sync-github",         "schedule": "30 5 * * *" },
-    { "path": "/api/cron/sync-vercel",         "schedule": "45 5 * * *" },
-    { "path": "/api/cron/refresh-pnl",         "schedule": "0 6 * * *" }
+    { "path": "/api/cron/refresh-fx",            "schedule": "0 4 * * *" },
+    { "path": "/api/cron/provision-workspaces",  "schedule": "5 4 * * *" },
+    { "path": "/api/cron/sync-anthropic",        "schedule": "10 4 * * *" },
+    { "path": "/api/cron/sync-openai",           "schedule": "20 4 * * *" },
+    { "path": "/api/cron/sync-google-billing",   "schedule": "30 4 * * *" },
+    { "path": "/api/cron/sync-fortnox-customers", "schedule": "50 4 * * *" },
+    { "path": "/api/cron/sync-fortnox",          "schedule": "0 5 * * *" },
+    { "path": "/api/cron/sync-github",           "schedule": "30 5 * * *" },
+    { "path": "/api/cron/sync-vercel",           "schedule": "45 5 * * *" },
+    { "path": "/api/cron/refresh-pnl",           "schedule": "0 6 * * *" }
   ]
 }

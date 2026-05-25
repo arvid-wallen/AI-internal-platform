@@ -212,6 +212,70 @@ export async function listInvoicesSince(
   return out;
 }
 
+// ============ Customers API ============
+
+export interface FortnoxCustomer {
+  CustomerNumber: string;
+  Name: string;
+  OrganisationNumber: string | null;
+  Email: string | null;
+  Active?: boolean;
+}
+
+interface CustomerListResponse {
+  Customers: Array<{
+    CustomerNumber: string;
+    Name: string;
+    OrganisationNumber?: string | null;
+    Email?: string | null;
+    Active?: boolean;
+  }>;
+  MetaInformation: {
+    "@TotalResources": number;
+    "@TotalPages": number;
+    "@CurrentPage": number;
+  };
+}
+
+export async function listCustomers(
+  accessToken: string,
+): Promise<FortnoxCustomer[]> {
+  const out: FortnoxCustomer[] = [];
+  let page = 1;
+  for (;;) {
+    const url = new URL(`${API_BASE}/customers`);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", "100");
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Fortnox /customers ${res.status}: ${await res.text()}`);
+    }
+    const body = (await res.json()) as CustomerListResponse;
+    for (const c of body.Customers) {
+      out.push({
+        CustomerNumber: c.CustomerNumber,
+        Name: c.Name,
+        OrganisationNumber: c.OrganisationNumber ?? null,
+        Email: c.Email ?? null,
+        Active: c.Active,
+      });
+    }
+    if (
+      body.MetaInformation["@CurrentPage"] >=
+      body.MetaInformation["@TotalPages"]
+    )
+      break;
+    page += 1;
+    if (page > 50) break; // safety
+  }
+  return out;
+}
+
 function requireEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} not set`);

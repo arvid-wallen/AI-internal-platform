@@ -1,10 +1,16 @@
 // Shared presentational components — used across all pages.
 import type { ReactNode } from "react";
 import { Icons, type IconName } from "./icons";
-import { PROVIDERS } from "@/lib/data";
 import type { ProviderSlug } from "@/lib/types";
 import { fmt } from "@/lib/format";
 import { Sparkline } from "./charts";
+
+// Provider brand labels (colors come from the `.pdot.<slug>` CSS classes).
+const PROVIDERS: { slug: ProviderSlug; name: string }[] = [
+  { slug: "anthropic", name: "Anthropic" },
+  { slug: "openai", name: "OpenAI" },
+  { slug: "google", name: "Google Gemini" },
+];
 
 export function Pill({
   kind,

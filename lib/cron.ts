@@ -22,10 +22,15 @@ export async function startSyncRun(
 ): Promise<SyncRunStarted | null> {
   try {
     const supabase = createSupabaseAdmin();
+    const { data: integ } = await supabase
+      .from("integrations_credentials")
+      .select("id")
+      .eq("provider_slug", integrationSlug)
+      .maybeSingle();
     const { data, error } = await supabase
       .from("integration_sync_runs")
       .insert({
-        integration_id: null,                // resolved by integration_slug below in real impl
+        integration_id: integ?.id ?? null,
         started_at: new Date().toISOString(),
         status: "ok",
       })

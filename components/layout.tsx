@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icons, type IconName } from "./icons";
-import { CUSTOMERS, PROJECTS } from "@/lib/data";
 
 interface NavItem {
   id: string;
@@ -19,42 +18,56 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const NAV: NavGroup[] = [
-  {
-    section: "Core",
-    items: [
-      { id: "dashboard", label: "Operations", icon: "Dashboard", href: "/dashboard" },
-      { id: "customers", label: "Customers", icon: "Users", href: "/customers", count: CUSTOMERS.length },
-      { id: "projects", label: "Projects", icon: "Cube", href: "/projects", count: PROJECTS.length },
-      { id: "models", label: "Models", icon: "Brain", href: "/models" },
-      { id: "tokens", label: "Token Usage", icon: "Coins", href: "/tokens" },
-      { id: "incidents", label: "Incidents", icon: "Alert", href: "/incidents", alert: true },
-    ],
-  },
-  {
-    section: "Finance",
-    items: [
-      { id: "billing", label: "Billing & Revenue", icon: "Receipt", href: "/billing" },
-      { id: "costs", label: "Costs", icon: "Wallet", href: "/costs" },
-      { id: "reports", label: "Reports & Risk", icon: "Chart", href: "/reports" },
-    ],
-  },
-  {
-    section: "Workflows",
-    items: [
-      { id: "workflows", label: "Workflows & Tools", icon: "Workflow", href: "/workflows" },
-    ],
-  },
-  {
-    section: "Admin",
-    items: [
-      { id: "wiki", label: "Wiki & Ideas", icon: "Book", href: "/wiki" },
-      { id: "settings", label: "Settings", icon: "Settings", href: "/settings" },
-    ],
-  },
-];
+export interface CrumbEntity {
+  id: string;
+  slug?: string;
+  name: string;
+}
 
-export function Sidebar() {
+function navGroups(customerCount: number, projectCount: number): NavGroup[] {
+  return [
+    {
+      section: "Core",
+      items: [
+        { id: "dashboard", label: "Operations", icon: "Dashboard", href: "/dashboard" },
+        { id: "customers", label: "Customers", icon: "Users", href: "/customers", count: customerCount },
+        { id: "projects", label: "Projects", icon: "Cube", href: "/projects", count: projectCount },
+        { id: "models", label: "Models", icon: "Brain", href: "/models" },
+        { id: "tokens", label: "Token Usage", icon: "Coins", href: "/tokens" },
+        { id: "incidents", label: "Incidents", icon: "Alert", href: "/incidents", alert: true },
+      ],
+    },
+    {
+      section: "Finance",
+      items: [
+        { id: "billing", label: "Billing & Revenue", icon: "Receipt", href: "/billing" },
+        { id: "costs", label: "Costs", icon: "Wallet", href: "/costs" },
+        { id: "reports", label: "Reports & Risk", icon: "Chart", href: "/reports" },
+      ],
+    },
+    {
+      section: "Workflows",
+      items: [
+        { id: "workflows", label: "Workflows & Tools", icon: "Workflow", href: "/workflows" },
+      ],
+    },
+    {
+      section: "Admin",
+      items: [
+        { id: "wiki", label: "Wiki & Ideas", icon: "Book", href: "/wiki" },
+        { id: "settings", label: "Settings", icon: "Settings", href: "/settings" },
+      ],
+    },
+  ];
+}
+
+export function Sidebar({
+  customerCount,
+  projectCount,
+}: {
+  customerCount: number;
+  projectCount: number;
+}) {
   const pathname = usePathname() ?? "/";
   const topSegment = pathname.split("/")[1] || "dashboard";
 
@@ -66,7 +79,7 @@ export function Sidebar() {
           <span className="sub">Operations Hub</span>
         </div>
       </div>
-      {NAV.map((group) => (
+      {navGroups(customerCount, projectCount).map((group) => (
         <div className="nav-section" key={group.section}>
           <div className="nav-section-title">{group.section}</div>
           {group.items.map((it) => {
@@ -127,7 +140,13 @@ const SECTION_LABEL: Record<string, string> = {
   settings: "Settings",
 };
 
-export function Topbar() {
+export function Topbar({
+  customers,
+  projects,
+}: {
+  customers: CrumbEntity[];
+  projects: CrumbEntity[];
+}) {
   const pathname = usePathname() ?? "/";
   const parts = pathname.split("/").filter(Boolean);
 
@@ -141,19 +160,15 @@ export function Topbar() {
     });
     if (parts[1]) {
       if (parts[0] === "customers") {
-        const c = CUSTOMERS.find((x) => x.id === parts[1]);
-        if (c)
-          crumbs.push({
-            label: c.name,
-            href: `/customers/${parts[1]}`,
-          });
+        const c = customers.find((x) => x.id === parts[1]);
+        if (c) crumbs.push({ label: c.name, href: `/customers/${parts[1]}` });
       } else if (parts[0] === "projects") {
-        const p = PROJECTS.find((x) => x.id === parts[1]);
-        if (p)
-          crumbs.push({
-            label: p.name,
-            href: `/projects/${parts[1]}`,
-          });
+        const seg = parts[1];
+        const bare = seg.replace(/^p-/, "");
+        const p = projects.find(
+          (x) => x.id === seg || x.slug === seg || x.slug === bare,
+        );
+        if (p) crumbs.push({ label: p.name, href: `/projects/${parts[1]}` });
       } else {
         crumbs.push({ label: parts[1] });
       }

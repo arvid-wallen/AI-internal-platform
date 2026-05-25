@@ -4,6 +4,9 @@ import {
   getPortfolio,
   getRecentUpdates,
   getTopProjectsByAICost,
+  listInvoices,
+  listProjects,
+  listSyncRuns,
 } from "@/lib/db";
 
 // Always server-render — portfolio totals + token usage are stale within
@@ -11,12 +14,7 @@ import {
 export const dynamic = "force-dynamic";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
-import {
-  KpiCard,
-  MarginBar,
-  ProviderChip,
-  SectionHead,
-} from "@/components/ui";
+import { KpiCard, MarginBar, ProviderChip, SectionHead } from "@/components/ui";
 import { StackedBarChart } from "@/components/charts";
 
 interface AttentionCard {
@@ -28,58 +26,17 @@ interface AttentionCard {
   href: string;
 }
 
-const NEEDS_ATTENTION: AttentionCard[] = [
-  {
-    kind: "critical",
-    icon: "Alert",
-    title: "Klarna Dispute Triage — kostnadsspike 4.2×",
-    desc: "Opus 4.7-rollout har driftat AI-kostnaden från 38k → 162k kr/mån. Marginalen är nu negativ.",
-    meta: ["p-klarna-dispute", "Updated 09:12"],
-    href: "/projects/p-klarna-dispute",
-  },
-  {
-    kind: "critical",
-    icon: "Receipt",
-    title: "Faktura F-2603-097 är förfallen",
-    desc: "Klarna · Dispute Triage · april. 12 dagar över förfallodatum.",
-    meta: ["Klarna · 240 000 kr", "Förfall 2026-04-30"],
-    href: "/billing",
-  },
-  {
-    kind: "warn",
-    icon: "Server",
-    title: "Google Cloud Billing — 2 workspaces saknar label",
-    desc: "Vertex AI-kostnader för 2 SKU:er går inte att attributera till ett projekt.",
-    meta: ["google sync · 04:33"],
-    href: "/settings",
-  },
-  {
-    kind: "warn",
-    icon: "Pause",
-    title: "Northvolt QA Assistant pausad i 28 dagar",
-    desc: "Ingen aktivitet sedan offboarding-diskussion 17 apr. Beslut behövs.",
-    meta: ["p-nv-qa"],
-    href: "/projects/p-nv-qa",
-  },
-  {
-    kind: "info",
-    icon: "Sparkles",
-    title: "Föreslagen besparing — Klarna Dispute",
-    desc: "Byt Opus 4.7 → Sonnet 4.5 + reasoning_effort=high. Estimerad besparing 108 000 kr/mån.",
-    meta: ["AI suggestion · 09:14"],
-    href: "/projects/p-klarna-dispute",
-  },
-];
-
 export default async function DashboardPage() {
-  // Server-side parallel fetch — everything reads from lib/db which falls
-  // back to mock data when Supabase isn't configured.
-  const [portfolio, daily, topByCost, updates] = await Promise.all([
-    getPortfolio(),
-    getDailyPortfolio(60),
-    getTopProjectsByAICost(6),
-    getRecentUpdates(6),
-  ]);
+  const [portfolio, daily, topByCost, updates, invoices, syncRuns, projects] =
+    await Promise.all([
+      getPortfolio(),
+      getDailyPortfolio(60),
+      getTopProjectsByAICost(6),
+      getRecentUpdates(6),
+      listInvoices(),
+      listSyncRuns(12),
+      listProjects(),
+    ]);
 
   const last30 = daily.slice(-30);
   const prev30 = daily.slice(-60, -30);
@@ -98,17 +55,82 @@ export default async function DashboardPage() {
     },
   }));
 
+  // Derive "needs attention" from real signals (priority order).
+  const attention: AttentionCard[] = [];
+  for (const p of topByCost) {
+    const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
+    if (p.monthly_revenue > 0 && margin < 0)
+      attention.push({
+        kind: "critical",
+        icon: "Alert",
+        title: `${p.project_name} — negativ marginal`,
+        desc: `AI-kostnad ${fmt.ksek(p.ai_cost)} överstiger intäkt ${fmt.ksek(p.monthly_revenue)}.`,
+        meta: [p.customer_name].filter(Boolean),
+        href: `/projects/${p.project_id}`,
+      });
+  }
+  for (const inv of invoices) {
+    if (inv.status === "overdue")
+      attention.push({
+        kind: "critical",
+        icon: "Receipt",
+        title: `Faktura ${inv.id} förfallen`,
+        desc: `${fmt.ksek(inv.amount)} · förfaller ${inv.due}`,
+        meta: [inv.customer_id].filter(Boolean),
+        href: "/billing",
+      });
+  }
+  for (const r of syncRuns) {
+    if (r.status === "fail")
+      attention.push({
+        kind: "warn",
+        icon: "Server",
+        title: `${r.integration}-sync misslyckades`,
+        desc: r.err ?? "Okänt fel vid senaste sync.",
+        meta: [r.at].filter(Boolean),
+        href: "/settings",
+      });
+  }
+  for (const p of projects) {
+    if (p.status === "paused")
+      attention.push({
+        kind: "info",
+        icon: "Pause",
+        title: `${p.name} pausad`,
+        desc: "Pausat projekt — beslut kan behövas.",
+        meta: [p.customer_id].filter(Boolean),
+        href: `/projects/${p.id}`,
+      });
+  }
+  const needs = attention.slice(0, 5);
+
+  const now = new Date();
+  const tz = "Europe/Stockholm";
+  const hour = Number(
+    new Intl.DateTimeFormat("sv-SE", { hour: "numeric", hour12: false, timeZone: tz }).format(now),
+  );
+  const greeting = hour < 10 ? "God morgon" : hour < 18 ? "God dag" : "God kväll";
+  const dateStr = new Intl.DateTimeFormat("sv-SE", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: tz,
+  }).format(now);
+
   return (
     <div className="page">
       <div className="page-head">
         <div className="left">
-          <div className="page-eyebrow">Operations · måndag 15 maj 2026</div>
+          <div className="page-eyebrow">Operations · {dateStr}</div>
           <h1 className="page-title">
-            God morgon, <em>Arvid.</em>
+            {greeting}, <em>Arvid.</em>
           </h1>
           <p className="page-sub">
             {portfolio.project_count} projekt över {portfolio.customer_count} kunder.
-            5 saker behöver uppmärksamhet idag.
+            {needs.length > 0
+              ? ` ${needs.length} ${needs.length === 1 ? "sak behöver" : "saker behöver"} uppmärksamhet idag.`
+              : " Inget kräver uppmärksamhet just nu."}
           </p>
         </div>
         <div className="actions">
@@ -128,12 +150,7 @@ export default async function DashboardPage() {
           icon="Coins"
           label="Portfolio MRR"
           value={fmt.ksek(portfolio.total_mrr)}
-          delta="+12,4%"
-          deltaDir="up"
-          hint="vs april"
-          spark={last30Cost.map(
-            (_, i) => portfolio.total_mrr * (0.85 + (i / 30) * 0.18),
-          )}
+          hint="denna månad"
         />
         <KpiCard
           icon="Brain"
@@ -141,28 +158,22 @@ export default async function DashboardPage() {
           value={fmt.ksek(portfolio.ai_cost)}
           delta={fmt.pct(costDelta)}
           deltaDir={costDelta > 0 ? "down" : "up"}
-          hint="vs april"
+          hint="vs föregående 30 d"
           spark={last30Cost}
         />
         <KpiCard
           icon="Server"
           label="Infrastruktur"
           value={fmt.ksek(portfolio.infra_cost)}
-          delta="+3,1%"
-          deltaDir="down"
-          hint="vs april"
-          spark={last30Cost.map((c, i) => c * 0.16 + Math.sin(i / 3) * 200)}
+          hint="denna månad"
         />
         <KpiCard
           icon="Wallet"
           label="Portfolio-marginal"
           value={fmt.pct(portfolio.margin_pct)}
           delta={fmt.ksek(portfolio.margin)}
-          deltaDir="up"
+          deltaDir={portfolio.margin >= 0 ? "up" : "down"}
           hint="netto SEK/mån"
-          spark={last30Cost.map(
-            (c) => portfolio.total_mrr - c - portfolio.infra_cost,
-          )}
         />
       </div>
 
@@ -236,8 +247,7 @@ export default async function DashboardPage() {
               </thead>
               <tbody>
                 {topByCost.map((p) => {
-                  const margin =
-                    p.monthly_revenue - p.ai_cost - p.infra_cost;
+                  const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
                   const marginPct = p.monthly_revenue
                     ? margin / p.monthly_revenue
                     : -1;
@@ -266,6 +276,13 @@ export default async function DashboardPage() {
                     </tr>
                   );
                 })}
+                {topByCost.length === 0 && (
+                  <tr className="no-hover">
+                    <td colSpan={5} className="empty">
+                      Ingen AI-användning attribuerad till projekt ännu.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -275,7 +292,7 @@ export default async function DashboardPage() {
           <div className="card">
             <SectionHead
               title="Needs attention"
-              sub="5 saker"
+              sub={`${needs.length} ${needs.length === 1 ? "sak" : "saker"}`}
               actions={
                 <button className="icon-btn" type="button">
                   <Icons.More size={14} />
@@ -283,7 +300,7 @@ export default async function DashboardPage() {
               }
             />
             <div className="stack" style={{ gap: 10 }}>
-              {NEEDS_ATTENTION.map((n, i) => {
+              {needs.map((n, i) => {
                 const Icn = Icons[n.icon];
                 return (
                   <Link
@@ -310,6 +327,11 @@ export default async function DashboardPage() {
                   </Link>
                 );
               })}
+              {needs.length === 0 && (
+                <div className="empty" style={{ padding: 14 }}>
+                  Inget kräver uppmärksamhet just nu.
+                </div>
+              )}
             </div>
           </div>
 
@@ -325,6 +347,11 @@ export default async function DashboardPage() {
                   <div className="tl-desc">{u.body}</div>
                 </div>
               ))}
+              {updates.length === 0 && (
+                <div className="empty" style={{ padding: 14 }}>
+                  Ingen aktivitet ännu.
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -137,3 +137,42 @@ export function openAiAdminKeys(): string[] {
   return [process.env.OPENAI_ADMIN_KEY, process.env.OPENAI_ADMIN_KEY_HAUS]
     .filter((k): k is string => !!k);
 }
+
+// ============ Projects (for auto-provisioning Hub projects) ============
+
+export interface OpenAIProject {
+  id: string;            // proj_...
+  name: string;
+  status: string;        // "active" | "archived"
+}
+
+interface ProjectListPage {
+  object: "list";
+  data: Array<{ id: string; name: string; status: string }>;
+  has_more: boolean;
+  last_id: string | null;
+}
+
+// Lists all projects for one org admin key. Docs:
+// https://platform.openai.com/docs/api-reference/projects/list
+export async function fetchProjects(apiKey?: string): Promise<OpenAIProject[]> {
+  const key = resolveKey(apiKey);
+  const out: OpenAIProject[] = [];
+  let after: string | null = null;
+  do {
+    const url = new URL(`${BASE}/projects`);
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("include_archived", "true");
+    if (after) url.searchParams.set("after", after);
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok)
+      throw new Error(`OpenAI Projects API ${res.status} ${await res.text()}`);
+    const body = (await res.json()) as ProjectListPage;
+    for (const p of body.data)
+      out.push({ id: p.id, name: p.name, status: p.status });
+    after = body.has_more ? body.last_id : null;
+  } while (after);
+  return out;
+}

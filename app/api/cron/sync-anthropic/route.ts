@@ -7,16 +7,20 @@ import {
   finishSyncRun,
   errMsg,
 } from "@/lib/cron";
-import { fetchCostReport } from "@/lib/integrations/anthropic";
+import {
+  fetchCostReport,
+  fetchMessagesUsage,
+  type AnthropicUsageBucket,
+} from "@/lib/integrations/anthropic";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Pulls Anthropic cost report (per workspace per day) and writes
-// token_usage_daily. The Admin cost report only groups by workspace_id /
-// description, so we attribute the model from each project's currently-active
-// model. Idempotent via delete-then-insert over the provider + date window.
+// Pulls Anthropic cost (per workspace/day) from the cost report and token
+// counts (per workspace/model/day) from the messages usage report, then
+// allocates each workspace/day cost across its models by token share.
+// Idempotent via delete-then-insert over the provider + date window.
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return jsonError("unauthorized", 401);
   const run = await startSyncRun("anthropic");
@@ -43,12 +47,26 @@ export async function GET(request: NextRequest) {
     const fromStr = startingAt.toISOString().slice(0, 10);
     const toStr = endingAt.toISOString().slice(0, 10);
 
-    const buckets = await fetchCostReport({
+    const costBuckets = await fetchCostReport({
       starting_at: startingAt.toISOString(),
       ending_at: endingAt.toISOString(),
       bucket_width: "1d",
       group_by: ["workspace_id"],
     });
+
+    // Messages usage gives model + token counts; best-effort (schema/plan may
+    // not expose it). Fall back to cost-only (model_id null) on failure.
+    let usageBuckets: AnthropicUsageBucket[] = [];
+    try {
+      usageBuckets = await fetchMessagesUsage({
+        starting_at: startingAt.toISOString(),
+        ending_at: endingAt.toISOString(),
+        bucket_width: "1d",
+        group_by: ["workspace_id", "model"],
+      });
+    } catch {
+      usageBuckets = [];
+    }
 
     const supabase = createSupabaseAdmin();
     const { data: cred } = await supabase
@@ -64,17 +82,13 @@ export async function GET(request: NextRequest) {
       .select("id")
       .eq("slug", "anthropic")
       .maybeSingle();
-
-    // project_id -> active model uuid (1 active model per project)
-    const { data: activeModels } = await supabase
-      .from("project_models")
-      .select("project_id, model_id")
-      .eq("is_active", true)
-      .is("effective_to", null);
-    const activeModelByProject = new Map<string, string>(
-      (activeModels ?? []).map((m) => [m.project_id, m.model_id]),
+    const providerId = anthropicProvider?.id ?? null;
+    const { data: models } = await supabase
+      .from("ai_models")
+      .select("id, model_id");
+    let modelMap = new Map<string, string>(
+      (models ?? []).map((m) => [m.model_id, m.id]),
     );
-
     const { data: fx } = await supabase
       .from("fx_rates")
       .select("usd_sek")
@@ -83,45 +97,144 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     const usdSek = fx?.usd_sek ?? 10.78;
 
-    const rows: Array<Record<string, unknown>> = [];
+    const wsKey = (ws: string | null, date: string) => `${ws ?? "_"}|${date}`;
+
+    // Cost per workspace/day.
+    const costByWs = new Map<string, number>();
     let totalCostUsd = 0;
-    for (const bucket of buckets) {
-      const usageDate = bucket.starting_at.slice(0, 10);
+    for (const bucket of costBuckets) {
+      const date = bucket.starting_at.slice(0, 10);
       for (const r of bucket.results) {
-        const project_id = r.workspace_id
-          ? workspaceMap[r.workspace_id] ?? null
-          : null;
-        const model_id = project_id
-          ? activeModelByProject.get(project_id) ?? null
-          : null;
-        const input_tokens =
-          (r.uncached_input_tokens ?? 0) + (r.cache_creation_input_tokens ?? 0);
+        const k = wsKey(r.workspace_id, date);
+        costByWs.set(k, (costByWs.get(k) ?? 0) + Number(r.amount ?? 0));
+        totalCostUsd += Number(r.amount ?? 0);
+      }
+    }
+
+    // Token usage per workspace/model/day.
+    interface ModelUsage {
+      model: string | null;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_write_tokens: number;
+    }
+    const usageByWs = new Map<string, ModelUsage[]>();
+    for (const bucket of usageBuckets) {
+      const date = bucket.starting_at.slice(0, 10);
+      for (const r of bucket.results) {
+        const k = wsKey(r.workspace_id, date);
+        const list = usageByWs.get(k) ?? [];
+        list.push({
+          model: r.model ?? null,
+          input_tokens:
+            Number(r.uncached_input_tokens ?? 0) +
+            Number(r.cache_creation_input_tokens ?? 0),
+          output_tokens: Number(r.output_tokens ?? 0),
+          cache_read_tokens: Number(r.cache_read_input_tokens ?? 0),
+          cache_write_tokens: Number(r.cache_creation_input_tokens ?? 0),
+        });
+        usageByWs.set(k, list);
+      }
+    }
+
+    // Upsert unknown Anthropic models from the usage report.
+    if (providerId) {
+      const unknown = [
+        ...new Set(
+          [...usageByWs.values()]
+            .flat()
+            .map((u) => u.model)
+            .filter((m): m is string => !!m && !modelMap.has(m)),
+        ),
+      ];
+      if (unknown.length > 0) {
+        await supabase.from("ai_models").upsert(
+          unknown.map((m) => ({
+            provider_id: providerId,
+            model_id: m,
+            display_name: m,
+            is_current: true,
+          })),
+          { onConflict: "provider_id,model_id", ignoreDuplicates: true },
+        );
+        const { data: m2 } = await supabase
+          .from("ai_models")
+          .select("id, model_id");
+        modelMap = new Map((m2 ?? []).map((m) => [m.model_id, m.id]));
+      }
+    }
+
+    // Build rows: allocate each workspace/day cost across its models by tokens.
+    const rows: Array<Record<string, unknown>> = [];
+    const allKeys = new Set([...costByWs.keys(), ...usageByWs.keys()]);
+    for (const key of allKeys) {
+      const sep = key.lastIndexOf("|");
+      const ws = key.slice(0, sep);
+      const date = key.slice(sep + 1);
+      const workspaceId = ws === "_" ? null : ws;
+      const project_id = workspaceId
+        ? workspaceMap[workspaceId] ?? null
+        : null;
+      const wsCost = costByWs.get(key) ?? 0;
+      const usages = usageByWs.get(key) ?? [];
+      const totalTokens = usages.reduce(
+        (s, u) => s + u.input_tokens + u.output_tokens,
+        0,
+      );
+
+      if (usages.length === 0) {
+        // Cost without a model breakdown — keep cost, no model.
         rows.push({
           project_id,
-          model_id,
-          provider_id: anthropicProvider?.id ?? null,
-          usage_date: usageDate,
-          input_tokens,
-          output_tokens: r.output_tokens ?? 0,
-          cache_read_tokens: r.cache_read_input_tokens ?? 0,
-          cache_write_tokens: r.cache_creation_input_tokens ?? 0,
+          model_id: null,
+          provider_id: providerId,
+          usage_date: date,
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_read_tokens: 0,
+          cache_write_tokens: 0,
           request_count: null,
-          cost_usd: r.amount ?? 0,
-          cost_sek: Number(((r.amount ?? 0) * usdSek).toFixed(2)),
-          source_workspace_id: r.workspace_id,
-          raw: r,
+          cost_usd: Number(wsCost.toFixed(6)),
+          cost_sek: Number((wsCost * usdSek).toFixed(2)),
+          source_workspace_id: workspaceId,
+          raw: { workspace_id: workspaceId, cost_only: true },
           ingested_at: new Date().toISOString(),
         });
-        totalCostUsd += r.amount ?? 0;
+        continue;
+      }
+
+      for (const u of usages) {
+        const rowTokens = u.input_tokens + u.output_tokens;
+        const cost_usd =
+          totalTokens > 0
+            ? wsCost * (rowTokens / totalTokens)
+            : wsCost / usages.length;
+        rows.push({
+          project_id,
+          model_id: u.model ? modelMap.get(u.model) ?? null : null,
+          provider_id: providerId,
+          usage_date: date,
+          input_tokens: u.input_tokens,
+          output_tokens: u.output_tokens,
+          cache_read_tokens: u.cache_read_tokens,
+          cache_write_tokens: u.cache_write_tokens,
+          request_count: null,
+          cost_usd: Number(cost_usd.toFixed(6)),
+          cost_sek: Number((cost_usd * usdSek).toFixed(2)),
+          source_workspace_id: workspaceId,
+          raw: { workspace_id: workspaceId, model: u.model },
+          ingested_at: new Date().toISOString(),
+        });
       }
     }
 
     // Idempotent replace of the window for this provider.
-    if (anthropicProvider?.id) {
+    if (providerId) {
       await supabase
         .from("token_usage_daily")
         .delete()
-        .eq("provider_id", anthropicProvider.id)
+        .eq("provider_id", providerId)
         .gte("usage_date", fromStr)
         .lt("usage_date", toStr);
     }
@@ -134,7 +247,11 @@ export async function GET(request: NextRequest) {
       records: rows.length,
       cost_usd: totalCostUsd,
     });
-    return jsonOk({ buckets: buckets.length, records: rows.length });
+    return jsonOk({
+      costBuckets: costBuckets.length,
+      usageBuckets: usageBuckets.length,
+      records: rows.length,
+    });
   } catch (e) {
     await finishSyncRun(run?.id ?? null, "failed", { error: errMsg(e) });
     return jsonError(errMsg(e));

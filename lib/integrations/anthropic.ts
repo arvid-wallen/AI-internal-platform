@@ -109,3 +109,79 @@ export async function fetchUsageReport(opts: FetchOpts) {
   }
   return out;
 }
+
+// ============ Messages usage report (token counts per model) ============
+// The cost report cannot group by model, but the messages usage report can.
+// We combine the two: tokens + model from here, cost from the cost report.
+export interface AnthropicUsageBucket {
+  starting_at: string;
+  ending_at: string;
+  results: Array<{
+    workspace_id: string | null;
+    model: string | null;
+    uncached_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+    output_tokens?: number;
+  }>;
+}
+
+export async function fetchMessagesUsage(
+  opts: FetchOpts,
+): Promise<AnthropicUsageBucket[]> {
+  const apiKey = process.env.ANTHROPIC_ADMIN_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_ADMIN_KEY not set");
+
+  const url = new URL(`${BASE}/organizations/usage_report/messages`);
+  url.searchParams.set("starting_at", opts.starting_at);
+  url.searchParams.set("ending_at", opts.ending_at);
+  url.searchParams.set("bucket_width", opts.bucket_width ?? "1d");
+  (opts.group_by ?? ["workspace_id", "model"]).forEach((g) =>
+    url.searchParams.append("group_by[]", g),
+  );
+
+  const out: AnthropicUsageBucket[] = [];
+  for await (const page of paginate<{
+    data: AnthropicUsageBucket[];
+    has_more: boolean;
+    next_page: string | null;
+  }>(url, apiKey)) {
+    out.push(...page.data);
+  }
+  return out;
+}
+
+// ============ Workspaces (for auto-provisioning Hub projects) ============
+export interface AnthropicWorkspace {
+  id: string;            // wrkspc_...
+  name: string;
+}
+
+export async function fetchWorkspaces(): Promise<AnthropicWorkspace[]> {
+  const apiKey = process.env.ANTHROPIC_ADMIN_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_ADMIN_KEY not set");
+
+  const out: AnthropicWorkspace[] = [];
+  let afterId: string | null = null;
+  do {
+    const url = new URL(`${BASE}/organizations/workspaces`);
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("include_archived", "true");
+    if (afterId) url.searchParams.set("after_id", afterId);
+    const res = await fetch(url.toString(), {
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    });
+    if (!res.ok)
+      throw new Error(
+        `Anthropic Workspaces API ${res.status} ${await res.text().catch(() => "")}`,
+      );
+    const body = (await res.json()) as {
+      data: Array<{ id: string; name: string }>;
+      has_more: boolean;
+      last_id: string | null;
+    };
+    for (const w of body.data) out.push({ id: w.id, name: w.name });
+    afterId = body.has_more ? body.last_id : null;
+  } while (afterId);
+  return out;
+}
