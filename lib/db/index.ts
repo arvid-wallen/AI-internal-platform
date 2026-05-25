@@ -25,6 +25,8 @@ import type {
 const stripP = (idOrSlug: string) =>
   idOrSlug.startsWith("p-") ? idOrSlug.slice(2) : idOrSlug;
 
+const isSupabaseConfigured = () => !!process.env.NEXT_PUBLIC_SUPABASE_URL;
+
 // ============ Customers ============
 
 export async function listCustomers(): Promise<Customer[]> {
