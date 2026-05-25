@@ -68,3 +68,15 @@ export function jsonError(message: string, status = 500) {
 export function jsonOk(payload: Record<string, unknown> = {}) {
   return Response.json({ ok: true, ...payload });
 }
+
+// Serialize anything thrown into a useful string. Plain objects (e.g. Supabase
+// PostgrestError) would otherwise stringify to "[object Object]".
+export function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}

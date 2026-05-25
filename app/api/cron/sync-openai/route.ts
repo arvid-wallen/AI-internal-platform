@@ -1,5 +1,12 @@
 import type { NextRequest } from "next/server";
-import { isCronAuthorized, jsonError, jsonOk, startSyncRun, finishSyncRun } from "@/lib/cron";
+import {
+  isCronAuthorized,
+  jsonError,
+  jsonOk,
+  startSyncRun,
+  finishSyncRun,
+  errMsg,
+} from "@/lib/cron";
 import {
   fetchCompletionsUsage,
   fetchCosts,
@@ -10,9 +17,9 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Pulls usage + cost across ALL configured OpenAI orgs (Nimo legacy +
-// Haus AI new). OpenAI project ids (proj_...) are globally unique so rows
-// from different orgs never collide on the upsert key.
+// Pulls usage + cost across ALL configured OpenAI orgs (Nimo legacy + Haus AI).
+// OpenAI project ids (proj_...) are globally unique so cross-org rows are
+// distinct. Idempotent via delete-then-insert over the provider + date window.
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return jsonError("unauthorized", 401);
   const run = await startSyncRun("openai");
@@ -26,18 +33,17 @@ export async function GET(request: NextRequest) {
       return jsonOk({ skipped: "no_admin_key" });
     }
 
-    // Window: ?from=YYYY-MM-DD&to=YYYY-MM-DD for backfill; default = yesterday→today.
     const sp = request.nextUrl.searchParams;
     const now = Math.floor(Date.now() / 1000);
     const startOfToday = now - (now % 86400);
-    const fromParam = sp.get("from");
-    const toParam = sp.get("to");
-    const startTime = fromParam
-      ? Math.floor(new Date(`${fromParam}T00:00:00.000Z`).getTime() / 1000)
+    const startTime = sp.get("from")
+      ? Math.floor(new Date(`${sp.get("from")}T00:00:00.000Z`).getTime() / 1000)
       : startOfToday - 86400;
-    const endTime = toParam
-      ? Math.floor(new Date(`${toParam}T00:00:00.000Z`).getTime() / 1000)
+    const endTime = sp.get("to")
+      ? Math.floor(new Date(`${sp.get("to")}T00:00:00.000Z`).getTime() / 1000)
       : startOfToday;
+    const fromStr = new Date(startTime * 1000).toISOString().slice(0, 10);
+    const toStr = new Date(endTime * 1000).toISOString().slice(0, 10);
 
     const supabase = createSupabaseAdmin();
     const { data: cred } = await supabase
@@ -66,7 +72,6 @@ export async function GET(request: NextRequest) {
     const usdSek = fx?.usd_sek ?? 10.78;
 
     const rows: Array<Record<string, unknown>> = [];
-    let totalRecords = 0;
     let totalCostUsd = 0;
 
     for (const apiKey of keys) {
@@ -85,7 +90,6 @@ export async function GET(request: NextRequest) {
         }),
       ]);
 
-      // Cost lookup keyed by (project_id, day) within this org.
       const costByKey = new Map<string, number>();
       for (const bucket of costs) {
         const usageDate = new Date(bucket.start_time * 1000)
@@ -124,29 +128,31 @@ export async function GET(request: NextRequest) {
             raw: r,
             ingested_at: new Date().toISOString(),
           });
-          totalRecords += 1;
           totalCostUsd += cost_usd;
         }
       }
     }
 
-    if (rows.length > 0) {
-      const { error } = await supabase
+    if (openaiProvider?.id) {
+      await supabase
         .from("token_usage_daily")
-        .upsert(rows, {
-          onConflict: "project_id,model_id,usage_date,source_workspace_id",
-        });
+        .delete()
+        .eq("provider_id", openaiProvider.id)
+        .gte("usage_date", fromStr)
+        .lt("usage_date", toStr);
+    }
+    if (rows.length > 0) {
+      const { error } = await supabase.from("token_usage_daily").insert(rows);
       if (error) throw error;
     }
 
     await finishSyncRun(run?.id ?? null, "ok", {
-      records: totalRecords,
+      records: rows.length,
       cost_usd: totalCostUsd,
     });
-    return jsonOk({ orgs: keys.length, records: totalRecords });
+    return jsonOk({ orgs: keys.length, records: rows.length });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await finishSyncRun(run?.id ?? null, "failed", { error: msg });
-    return jsonError(msg);
+    await finishSyncRun(run?.id ?? null, "failed", { error: errMsg(e) });
+    return jsonError(errMsg(e));
   }
 }
