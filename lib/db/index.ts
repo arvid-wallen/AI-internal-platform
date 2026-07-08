@@ -887,6 +887,7 @@ interface DbIncident {
   summary: string | null;
   occurred_at: string;
   resolved_at: string | null;
+  external_url?: string | null;
   project?: { slug?: string | null } | { slug?: string | null }[] | null;
 }
 
@@ -902,6 +903,7 @@ function toIncident(r: DbIncident): Incident {
     title: r.title,
     summary: r.summary ?? "",
     resolved: r.resolved_at != null,
+    url: r.external_url ?? null,
   };
 }
 
@@ -910,7 +912,7 @@ export async function listIncidents(): Promise<Incident[]> {
   const { data } = await supabase
     .from("incidents")
     .select(
-      "ref, severity, title, summary, occurred_at, resolved_at, project:projects(slug)",
+      "ref, severity, title, summary, occurred_at, resolved_at, external_url, project:projects(slug)",
     )
     .order("occurred_at", { ascending: false });
   return (data as unknown as DbIncident[] | null ?? []).map(toIncident);

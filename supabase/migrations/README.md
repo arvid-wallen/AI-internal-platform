@@ -19,6 +19,7 @@ Supabase MCP `apply_migration` (timestamp-trackade i
 | `0008_fortnox_invoice_fields.sql` | invoices.currency/currency_rate + index |
 | `0009_customer_mrr.sql` | MV-rebuild (overdue = intäkt) + `v_customer_mrr` |
 | `0010_harden_functions.sql` | Advisor-fixar (revokes, search_path, pg_trgm) |
+| `0011_sentry_incidents.sql` | incidents.sentry_issue_id/external_url + sentry-integrationsrad |
 
 ## Regler
 

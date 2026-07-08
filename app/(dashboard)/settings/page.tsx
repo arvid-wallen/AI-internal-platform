@@ -230,6 +230,13 @@ export default async function SettingsPage({
                 projects={mapping.projects}
                 initialMap={mapping.openaiMap}
               />
+              <WorkspaceMapping
+                provider="sentry"
+                label="Sentry project-mappning"
+                idLabel="sentry project slug"
+                projects={mapping.projects}
+                initialMap={mapping.sentryMap}
+              />
             </>
           )}
         </div>

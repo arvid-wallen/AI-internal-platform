@@ -19,6 +19,7 @@ interface OngoingIncident {
   when: string;
   projectSlug: string | null;
   projectName: string | null;
+  url: string | null;
 }
 
 async function listOngoingIncidents(): Promise<OngoingIncident[]> {
@@ -26,7 +27,7 @@ async function listOngoingIncidents(): Promise<OngoingIncident[]> {
   const { data } = await supabase
     .from("incidents")
     .select(
-      "id, ref, severity, title, summary, occurred_at, project:projects(slug, name)",
+      "id, ref, severity, title, summary, occurred_at, external_url, project:projects(slug, name)",
     )
     .is("resolved_at", null)
     .order("occurred_at", { ascending: false });
@@ -38,6 +39,7 @@ async function listOngoingIncidents(): Promise<OngoingIncident[]> {
       title: string;
       summary: string | null;
       occurred_at: string;
+      external_url: string | null;
       project?:
         | { slug?: string | null; name?: string | null }
         | Array<{ slug?: string | null; name?: string | null }>
@@ -54,6 +56,7 @@ async function listOngoingIncidents(): Promise<OngoingIncident[]> {
       when: (r.occurred_at ?? "").slice(0, 16).replace("T", " "),
       projectSlug: proj?.slug ?? null,
       projectName: proj?.name ?? null,
+      url: r.external_url ?? null,
     };
   });
 }
@@ -119,7 +122,23 @@ export default async function IncidentsPage() {
                     <StatusPill status={i.severity} />
                   </td>
                   <td>
-                    <div className="strong">{i.title}</div>
+                    <div className="strong">
+                      {i.title}
+                      {i.url && (
+                        <>
+                          {" "}
+                          <a
+                            href={i.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="dim"
+                            style={{ fontSize: 11.5, whiteSpace: "nowrap" }}
+                          >
+                            Sentry ↗
+                          </a>
+                        </>
+                      )}
+                    </div>
                     <div className="sub">{i.summary}</div>
                   </td>
                   {canEdit && (
@@ -161,7 +180,23 @@ export default async function IncidentsPage() {
                   <td>
                     <StatusPill status={i.severity} />
                   </td>
-                  <td>{i.title}</td>
+                  <td>
+                    {i.title}
+                    {i.url && (
+                      <>
+                        {" "}
+                        <a
+                          href={i.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="dim"
+                          style={{ fontSize: 11.5, whiteSpace: "nowrap" }}
+                        >
+                          Sentry ↗
+                        </a>
+                      </>
+                    )}
+                  </td>
                 </tr>
               );
             })}

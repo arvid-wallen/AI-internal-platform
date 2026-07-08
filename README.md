@@ -53,6 +53,7 @@ Misslyckade körningar loggas i `integration_sync_runs` och alertas till Slack.
 | `/api/cron/sync-vercel` | 05:45 dgl | Projektlänkning (kräver VERCEL_TOKEN) |
 | `/api/cron/refresh-pnl` | 06:00 dgl | `REFRESH MATERIALIZED VIEW mv_project_pnl_monthly` |
 | `/api/cron/notify-digest` | 06:30 mån | Slack-veckodigest |
+| `/api/cron/sync-sentry` | timvis | Sentry-issues → incidents (kräver SENTRY_AUTH_TOKEN) |
 
 `/api/cron/sync-fortnox-customers` finns kvar för manuell körning men är inte
 schemalagd (den kombinerade synken tog över).
@@ -87,6 +88,17 @@ regler (`card_vendor_rules`) + Claude-klassificering av okända + manuell
 granskning. API-usage (OpenAI/Anthropic) exkluderas för att inte dubbelräkna
 token-synken; bekräftade okända lärs in som nya regler.
 
+## Sentry → Incidents
+
+Timvis cron speglar olösta Sentry-issues (org `haus-ai-je`, EU-regionen) in i
+incidents-fliken: auto-skapas med severity från Sentry-level + spridning
+(fatal→critical; error→high vid ≥10 användare eller ≥100 events, annars
+medium; warning→low), auto-löses när de löses/ignoreras i Sentry, återöppnas
+vid regression. Nya high/critical-incidenter notifieras i Slack. Mappa
+Sentry-projekt → Hub-projekt under Settings ("Sentry project-mappning").
+Manuellt skapade incidenter rörs aldrig av synken. Kräver `SENTRY_AUTH_TOKEN`
+(org-token med org:read + project:read + event:read) + `SENTRY_ORG`.
+
 ## Notiser (Slack)
 
 `SLACK_WEBHOOK_URL` (incoming webhook) driver: alert vid misslyckad/rate-limitad
@@ -110,7 +122,8 @@ Se `.env.local.example`. I Vercel prod behövs minst: Supabase-trion,
 `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `ANTHROPIC_ADMIN_KEY`,
 `ANTHROPIC_API_KEY` (kortimportens klassificerare), `OPENAI_ADMIN_KEY`(+`_HAUS`),
 `FORTNOX_CLIENT_ID`/`FORTNOX_CLIENT_SECRET`, `SLACK_WEBHOOK_URL`; valfritt
-`GITHUB_TOKEN`, `VERCEL_TOKEN`+`VERCEL_TEAM_ID`, `GOOGLE_CREDENTIALS_JSON`+
+`SENTRY_AUTH_TOKEN`+`SENTRY_ORG` (+`SENTRY_REGION_URL`), `GITHUB_TOKEN`,
+`VERCEL_TOKEN`+`VERCEL_TEAM_ID`, `GOOGLE_CREDENTIALS_JSON`+
 `GOOGLE_BILLING_TABLE`, `FORTNOX_BACKFILL_FROM`.
 
 ## Struktur
