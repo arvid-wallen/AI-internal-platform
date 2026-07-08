@@ -86,6 +86,7 @@ export interface InvoiceSyncResult {
   invoices: number;
   mode: "backfill" | "incremental";
   rateWarnings: number; // invoices whose SEK amount could not be resolved
+  writeErrors: number; // invoices whose DB writes failed (run must not report ok)
 }
 
 export async function syncFortnoxInvoices(
@@ -139,6 +140,7 @@ export async function syncFortnoxInvoices(
 
   let upsertedInvoices = 0;
   let rateWarnings = 0;
+  let writeErrors = 0;
   for (const inv of invoices) {
     const rate = resolveInvoiceRate(inv, fxRow ?? {});
     if (rate === null) rateWarnings += 1;
@@ -151,7 +153,10 @@ export async function syncFortnoxInvoices(
       resolveProjectIdFromArticle(row.ArticleNumber, projectsBySlug),
     );
 
-    const { data: existing } = await supabase
+    // supabase-js returns errors instead of throwing — every write must be
+    // checked, otherwise a transient failure silently drops the invoice and
+    // (in incremental mode) the cursor would skip past it forever.
+    const { data: existing, error: upsertError } = await supabase
       .from("invoices")
       .upsert(
         {
@@ -174,11 +179,29 @@ export async function syncFortnoxInvoices(
       )
       .select("id")
       .single();
-    if (!existing) continue;
+    if (upsertError || !existing) {
+      console.error(
+        `[fortnox] invoice ${inv.DocumentNumber} upsert failed:`,
+        upsertError?.message ?? "no row returned",
+      );
+      writeErrors += 1;
+      continue;
+    }
     upsertedInvoices += 1;
 
     // Replace invoice_lines for this invoice.
-    await supabase.from("invoice_lines").delete().eq("invoice_id", existing.id);
+    const { error: delError } = await supabase
+      .from("invoice_lines")
+      .delete()
+      .eq("invoice_id", existing.id);
+    if (delError) {
+      console.error(
+        `[fortnox] invoice ${inv.DocumentNumber} lines delete failed:`,
+        delError.message,
+      );
+      writeErrors += 1;
+      continue; // keep old lines rather than risking delete+failed insert
+    }
     const lines = inv.InvoiceRows.map((row, i) => ({
       invoice_id: existing.id,
       description: row.Description,
@@ -187,13 +210,27 @@ export async function syncFortnoxInvoices(
       category: "subscription" as const,
     }));
     if (lines.length > 0) {
-      await supabase.from("invoice_lines").insert(lines);
+      const { error: insError } = await supabase
+        .from("invoice_lines")
+        .insert(lines);
+      if (insError) {
+        console.error(
+          `[fortnox] invoice ${inv.DocumentNumber} lines insert failed:`,
+          insError.message,
+        );
+        writeErrors += 1;
+      }
     }
   }
 
-  // Advance the cursor only after a fully successful pass.
-  const nextCursor = new Date(syncStart.getTime() - 24 * 3600 * 1000);
-  await patchFortnoxMetadata({ invoice_cursor: nextCursor.toISOString() });
+  // Advance the cursor only after a fully clean pass. On write errors or
+  // unresolvable rates the window is re-fetched next run — upserts are
+  // idempotent, so the overlap repairs the affected invoices (e.g. after
+  // fx_rates is fixed).
+  if (writeErrors === 0 && rateWarnings === 0) {
+    const nextCursor = new Date(syncStart.getTime() - 24 * 3600 * 1000);
+    await patchFortnoxMetadata({ invoice_cursor: nextCursor.toISOString() });
+  }
 
-  return { invoices: upsertedInvoices, mode, rateWarnings };
+  return { invoices: upsertedInvoices, mode, rateWarnings, writeErrors };
 }

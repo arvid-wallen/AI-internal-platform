@@ -50,13 +50,30 @@ left join infra_costs ic on ic.project_id = k.project_id and ic.period_month = k
 
 create unique index mv_project_pnl_monthly_unique
   on public.mv_project_pnl_monthly (project_id, period_month);
-grant select on public.mv_project_pnl_monthly to authenticated;
+
+-- Matviews cannot enforce RLS and a valid `authenticated` JWT can be minted
+-- by ANY Google account (the @haus.se gate lives in middleware + the
+-- onboarding trigger, not in Supabase Auth). Block direct API reads and
+-- expose the data through a member-gated view instead.
+revoke select on public.mv_project_pnl_monthly from anon, authenticated;
+
+drop view if exists public.v_project_pnl_monthly;
+create view public.v_project_pnl_monthly as
+  select * from public.mv_project_pnl_monthly
+  where public.is_haus_member();
+grant select on public.v_project_pnl_monthly to authenticated;
 
 -- 2) Customer MRR view. recurring_mrr_sek = recurring (avtalsfakturerade)
--- invoices in the latest complete month; trailing3_avg_sek = average monthly
--- invoiced total over the last 3 complete months (fallback while the
--- recurring flag is unproven).
-create or replace view public.v_customer_mrr as
+-- invoices in the latest complete month; trailing3_avg_sek = invoiced total
+-- over the last 3 complete months divided by a fixed 3 (months without
+-- invoices count as zero — averaging only invoice-bearing months would
+-- overstate MRR up to 3x).
+-- security_invoker so the underlying invoices/customers RLS applies to the
+-- caller (a plain view would run with owner rights and leak financials to
+-- any authenticated JWT).
+drop view if exists public.v_customer_mrr;
+create view public.v_customer_mrr
+with (security_invoker = true) as
 with monthly as (
   select i.customer_id,
          date_trunc('month', i.invoice_date)::date as m,
@@ -75,11 +92,11 @@ select c.id as customer_id,
          where m2.customer_id = c.id and m2.m = b.last_complete
        ), 0) as recurring_mrr_sek,
        coalesce((
-         select avg(m3.total_sek) from monthly m3, bounds b
+         select sum(m3.total_sek) from monthly m3, bounds b
          where m3.customer_id = c.id
            and m3.m > (b.last_complete - interval '3 months')::date
            and m3.m <= b.last_complete
-       ), 0) as trailing3_avg_sek
+       ), 0) / 3.0 as trailing3_avg_sek
 from public.customers c;
 
 grant select on public.v_customer_mrr to authenticated, service_role;

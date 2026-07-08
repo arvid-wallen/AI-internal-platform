@@ -195,13 +195,10 @@ export async function getPortfolio(): Promise<PortfolioTotals> {
   const [{ data: pnl }, { data: projectRows }, projects, live, customers] =
     await Promise.all([
       supabase
-        .from("mv_project_pnl_monthly")
+        .from("v_project_pnl_monthly")
         .select("*")
         .eq("period_month", isoMonth),
-      supabase
-        .from("projects")
-        .select("id, monthly_revenue_sek, status")
-        .neq("status", "offboarded"),
+      supabase.from("projects").select("id, monthly_revenue_sek, status"),
       supabase.from("projects").select("*", { count: "exact", head: true }),
       supabase
         .from("projects")
@@ -213,13 +210,18 @@ export async function getPortfolio(): Promise<PortfolioTotals> {
   const rows = pnl ?? [];
   // Revenue per project: invoiced (Fortnox) when present this month, else the
   // manually set monthly_revenue_sek — Fortnox takes over automatically.
+  // Invoiced revenue always counts (costs from the same rows do too, so the
+  // sets must stay symmetric); the manual fallback only applies to projects
+  // that are still active.
   const invoicedByProject = new Map<string, number>();
   for (const r of rows) {
     invoicedByProject.set(r.project_id as string, Number(r.revenue_sek ?? 0));
   }
   const total_mrr = (projectRows ?? []).reduce((s, p) => {
     const invoiced = invoicedByProject.get(p.id as string) ?? 0;
-    return s + (invoiced > 0 ? invoiced : Number(p.monthly_revenue_sek ?? 0));
+    if (invoiced > 0) return s + invoiced;
+    if (p.status === "offboarded") return s;
+    return s + Number(p.monthly_revenue_sek ?? 0);
   }, 0);
   const ai_cost = rows.reduce((s, r) => s + Number(r.ai_cost_sek), 0);
   const infra_cost = rows.reduce((s, r) => s + Number(r.infra_cost_sek), 0);

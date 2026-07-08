@@ -35,7 +35,10 @@ export async function GET(request: NextRequest) {
         supabase
           .from("token_usage_daily")
           .select("usage_date, cost_sek, project_id, provider:ai_providers(slug)")
-          .gte("usage_date", daysAgo(14)),
+          .gte("usage_date", daysAgo(14))
+          // Exclude today so both windows are exactly 7 complete days
+          // (partial-day data would skew the w/w delta).
+          .lt("usage_date", daysAgo(0)),
         supabase
           .from("mv_project_pnl_monthly")
           .select("project_id, name, revenue_sek, ai_cost_sek, infra_cost_sek, margin_sek")

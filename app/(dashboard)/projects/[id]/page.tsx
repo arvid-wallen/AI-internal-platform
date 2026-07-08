@@ -96,6 +96,9 @@ export default async function ProjectOverviewPage({
     <div className="stack">
       {canEdit && row && (
         <EditProject
+          // Keyed on the search param: client navigation to ?edit=1 must
+          // remount the component so defaultOpen takes effect again.
+          key={sp.edit === "1" ? "edit-open" : "edit-closed"}
           projectId={p.id}
           defaultOpen={sp.edit === "1"}
           customers={editData.customers}

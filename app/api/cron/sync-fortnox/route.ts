@@ -42,22 +42,27 @@ export async function GET(request: NextRequest) {
     }
 
     const { customers } = await syncFortnoxCustomers(accessToken);
-    const { invoices, mode, rateWarnings } =
+    const { invoices, mode, rateWarnings, writeErrors } =
       await syncFortnoxInvoices(accessToken);
 
     // Revenue data changed — re-materialize the P&L view.
     const supabase = createSupabaseAdmin();
     await supabase.rpc("refresh_pnl_monthly");
 
-    if (rateWarnings > 0) {
+    if (writeErrors > 0) {
+      await finishSyncRun(run?.id ?? null, "failed", {
+        records: invoices,
+        error: `${writeErrors} fakturor kunde inte skrivas till databasen — cursorn hölls kvar, nästa körning försöker igen`,
+      });
+    } else if (rateWarnings > 0) {
       await finishSyncRun(run?.id ?? null, "partial", {
         records: invoices,
-        error: `${rateWarnings} fakturor utan valutakurs — SEK-belopp saknas (kolla fx_rates)`,
+        error: `${rateWarnings} fakturor utan valutakurs — SEK-belopp saknas; fixa fx_rates så reparerar nästa körning (cursorn hölls kvar)`,
       });
     } else {
       await finishSyncRun(run?.id ?? null, "ok", { records: invoices });
     }
-    return jsonOk({ customers, invoices, mode, rateWarnings });
+    return jsonOk({ customers, invoices, mode, rateWarnings, writeErrors });
   } catch (e) {
     const status = e instanceof FortnoxRateLimitError ? "rate_limited" : "failed";
     await finishSyncRun(run?.id ?? null, status, { error: errMsg(e) });
