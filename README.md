@@ -1,14 +1,14 @@
 # Haus AI · Operations Hub
 
 Intern operationsplattform för Haus AI — kundprojekt, AI-modeller, token-tracking,
-intäkter, kostnader och marginaler i ett gränssnitt.
+intäkter (Fortnox), kostnader och marginaler i ett gränssnitt.
 
 ## Stack
 
 - **Next.js 15** (App Router, React 19, TypeScript)
 - **Tailwind 4** + handritad Apercu/Seriguela design (Haus brand)
-- **Supabase** — Postgres + Auth (Google OAuth begränsad till `@haus.se`) + Vault
-- **Vercel** — hosting + 8 cron jobs (alla integrationer)
+- **Supabase** — Postgres + Auth (Google OAuth begränsad till `@haus.se`)
+- **Vercel** — hosting + cron (alla integrationer)
 
 ## Lokal körning
 
@@ -19,68 +19,99 @@ cp .env.local.example .env.local
 pnpm dev
 ```
 
-Appen körs på <http://localhost:3000>. Utan Supabase env vars fungerar mock-läget
-direkt (alla sidor visar sample-data från `lib/data.ts`).
-
-## Supabase-uppsättning
+Appen körs på <http://localhost:3000>. Utan Supabase-env svarar appen 503
+(auth failar stängt — det finns inget mock-läge).
 
 ```bash
-# 1. Skapa projekt på supabase.com
-# 2. Kör migrationerna mot din nya db
-psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
-psql "$DATABASE_URL" -f supabase/migrations/0002_pnl_refresh.sql
-# 3. Seed med samma sample-data som mock-läget
-psql "$DATABASE_URL" -f supabase/seed.sql
-# 4. Aktivera Google OAuth provider i Auth → Providers
-#    Sätt "Authorized domain" till haus.se
+pnpm lint && pnpm typecheck && pnpm test   # körs även i CI (.github/workflows/ci.yml)
 ```
 
-Lägg sedan in dina @haus.se-användare i `team_members` och koppla
-`supabase_user_id` till deras `auth.users.id` (sker automatiskt vid första
-inloggning om du gör en upsert-trigger — se TODO i 0001_init.sql).
+## Supabase
+
+Prod-projekt: `haus-ai-ops`. Schema + regler i `supabase/migrations/`
+(se `supabase/migrations/README.md` för ordning och policy). Ny miljö:
+applicera alla migrationer i ordning + `seed.sql`, aktivera Google OAuth
+(hosted domain `haus.se`). `@haus.se`-användare onboardas automatiskt som
+`viewer` vid första inloggning (trigger i 0004); roller (`admin`/`editor`/
+`viewer`) sätts i `team_members`.
 
 ## Cron-jobb (Vercel)
 
-8 cron endpoints konfigurerade i `vercel.json`. Alla autentiseras via
-`Authorization: Bearer $CRON_SECRET` eller Vercels interna cron-header.
+Alla autentiseras med `Authorization: Bearer $CRON_SECRET` (Vercel skickar
+headern automatiskt när env-varn är satt; `x-vercel-cron` litas INTE på).
+Misslyckade körningar loggas i `integration_sync_runs` och alertas till Slack.
 
-| Endpoint | Schedule (UTC) | Status |
+| Endpoint | Schedule (UTC) | Gör |
 |---|---|---|
-| `/api/cron/refresh-fx` | 04:00 dgl | ✅ Riksbanken USD/EUR → SEK |
-| `/api/cron/sync-anthropic` | 04:10 dgl | ✅ Admin API cost_report |
-| `/api/cron/sync-openai` | 04:20 dgl | ✅ Usage + Costs API |
-| `/api/cron/sync-google-billing` | 04:30 dgl | 🟡 Stub — kräver BigQuery |
-| `/api/cron/sync-fortnox` | 05:00 dgl | 🟡 Stub — OAuth2 refresh + invoices |
-| `/api/cron/sync-github` | 05:30 dgl | 🟡 Skiss — läser repo-meta |
-| `/api/cron/sync-vercel` | 05:45 dgl | 🟡 Stub — Vercel API |
-| `/api/cron/refresh-pnl` | 06:00 dgl | ✅ `REFRESH MATERIALIZED VIEW mv_project_pnl_monthly` |
+| `/api/cron/refresh-fx` | 04:00 dgl | Riksbanken USD/EUR → SEK |
+| `/api/cron/provision-workspaces` | 04:05 dgl | Auto-skapar projekt från AI-workspaces |
+| `/api/cron/sync-anthropic` | 04:10 dgl | Admin API cost_report + usage |
+| `/api/cron/sync-openai` | 04:20 dgl | Usage + Costs API (multi-org) |
+| `/api/cron/sync-google-billing` | 04:30 dgl | BigQuery billing export (kräver env) |
+| `/api/cron/sync-fortnox` | 05:00 dgl | Kunder + fakturor + P&L-refresh (kombinerad) |
+| `/api/cron/sync-github` | 05:30 dgl | Repo-metadata (kräver GITHUB_TOKEN) |
+| `/api/cron/sync-vercel` | 05:45 dgl | Projektlänkning (kräver VERCEL_TOKEN) |
+| `/api/cron/refresh-pnl` | 06:00 dgl | `REFRESH MATERIALIZED VIEW mv_project_pnl_monthly` |
+| `/api/cron/notify-digest` | 06:30 mån | Slack-veckodigest |
 
-## Sidor
+`/api/cron/sync-fortnox-customers` finns kvar för manuell körning men är inte
+schemalagd (den kombinerade synken tog över).
 
-Sidofältet speglar kollegans Haus Web-hub men anpassat för AI-leveranser:
+## Fortnox
 
-```
-Core      Operations · Customers · Projects · Models · Token Usage · Incidents
-Finance   Billing & Revenue · Costs · Reports & Risk
-Workflows Workflows & Tools
-Admin     Wiki & Ideas · Settings
-```
+- Anslut via **Settings → Anslut Fortnox** (admin-only; OAuth authorization-code,
+  scopes `invoice customer article`). Redirect-URI i Fortnox developer portal
+  måste vara exakt `<NEXT_PUBLIC_APP_URL>/api/auth/fortnox/callback`.
+- Första synken backfillar fakturor från `FORTNOX_BACKFILL_FROM`
+  (default 2026-01-01); därefter inkrementellt via `lastmodified`-cursor.
+- Valuta: SEK-belopp beräknas från fakturans `CurrencyRate`/`CurrencyUnit`
+  (fx_rates som fallback). `recurring` härleds från `InvoiceType =
+  AGREEMENTINVOICE` → driver kund-MRR (`v_customer_mrr`).
+- Projektattribution via artikelkod `AI-<KUND>-<PROJEKT>` → `projects.slug`.
+- Rate-limit-säkert: max 4 parallella anrop + 429-retry (Fortnox: 25 req/5s).
+- Leverantörsfakturor (kostnadssidan) är ett medvetet senare steg — kräver
+  scope `supplierinvoice` (re-consent) + dubbelräkningsskydd mot kortimporten.
 
-Projektdetalj har 7 flikar: Overview / Models / Tokens / Costs /
-Dependencies / Updates / Notes. Modellfliken kan byta aktiv modell — på
-Supabase-läge skriver `lib/actions/switch-model.ts` direkt till `project_models`
-+ `model_switches` (audit-tabell).
+## Intäkter & marginaler
+
+`mv_project_pnl_monthly` = fakturerad intäkt (sent/paid/overdue) − AI-kostnad −
+infrakostnad per projekt/månad. I läsvyerna coalescas intäkt: fakturerat när
+det finns, annars projektets manuella `monthly_revenue_sek` (sätts i
+projekt-edit). Kund-MRR: recurring-fakturor senaste hela månaden, annars
+3-månaders fakturasnitt.
+
+## Kortkostnadsimport
+
+`/costs/import` — ladda upp månads-CSV från företagskortet: deterministiska
+regler (`card_vendor_rules`) + Claude-klassificering av okända + manuell
+granskning. API-usage (OpenAI/Anthropic) exkluderas för att inte dubbelräkna
+token-synken; bekräftade okända lärs in som nya regler.
+
+## Notiser (Slack)
+
+`SLACK_WEBHOOK_URL` (incoming webhook) driver: alert vid misslyckad/rate-limitad
+sync, notis vid modellbyte, veckodigest (måndagar). Utan env-varn skippas allt
+tyst (console.warn).
 
 ## Pull-config endpoint
 
-Varje kundprojekt anropar:
-
 ```
-GET https://ai-hub.haus.se/api/projects/{slug}/config
+GET /api/projects/{slug}/config
 Authorization: Bearer <projekt-token>
 ```
 
-→ returnerar aktiv modell, pris, context window. SWR-cache 60s, stale-while-revalidate 1h.
+Returnerar aktiv modell + priser. Tokens genereras per projekt via
+"Rotera bearer" på projektets modellsida (admin-only; endast sha256-hash
+lagras — utan roterad token är endpointet avstängt/401).
+
+## Env-variabler
+
+Se `.env.local.example`. I Vercel prod behövs minst: Supabase-trion,
+`NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `ANTHROPIC_ADMIN_KEY`,
+`ANTHROPIC_API_KEY` (kortimportens klassificerare), `OPENAI_ADMIN_KEY`(+`_HAUS`),
+`FORTNOX_CLIENT_ID`/`FORTNOX_CLIENT_SECRET`, `SLACK_WEBHOOK_URL`; valfritt
+`GITHUB_TOKEN`, `VERCEL_TOKEN`+`VERCEL_TEAM_ID`, `GOOGLE_CREDENTIALS_JSON`+
+`GOOGLE_BILLING_TABLE`, `FORTNOX_BACKFILL_FROM`.
 
 ## Struktur
 
@@ -88,32 +119,17 @@ Authorization: Bearer <projekt-token>
 app/
   (auth)/login                 # Google OAuth sign-in
   (dashboard)/...              # Skyddat segment med sidofält + topbar
-  api/cron/                    # 8 cron endpoints
-  api/projects/[slug]/config   # Public pull-config för kundprojekt
-  auth/callback                # OAuth callback
-components/
-  icons.tsx ui.tsx charts.tsx layout.tsx TabNav.tsx
+  api/cron/                    # Cron endpoints (se tabellen)
+  api/projects/[slug]/config   # Token-gated pull-config för kundprojekt
+  api/auth/fortnox/            # OAuth start + callback (admin-gated)
+components/                    # icons, ui, charts, layout, TabNav
 lib/
-  data.ts                      # Mock-data (fallback)
-  db/index.ts                  # Supabase-backed queries (async, opt-in)
-  actions/switch-model.ts      # Server Action för modellbyte
-  integrations/                # Anthropic + OpenAI klienter
-  supabase/                    # server.ts client.ts middleware.ts
-  cron.ts                      # Shared cron auth + run tracking
-supabase/
-  migrations/
-    0001_init.sql              # Hela schemat + RLS + materialized view
-    0002_pnl_refresh.sql       # RPC för MV-refresh
-  seed.sql                     # Sample data
-middleware.ts                  # @haus.se domänspärr
-vercel.json                    # 8 cron jobs
+  auth.ts                      # Sessionsmedlem + roller + friendlyDbError
+  db/index.ts                  # Supabase-backed queries (RLS via session)
+  actions/                     # Server actions (CRUD, import, Fortnox, auth)
+  integrations/                # anthropic, openai, google, fortnox(+sync/mapping), card-costs
+  cron.ts notify.ts fx.ts schemas.ts csv.ts format.ts
+supabase/migrations/           # Schema + RLS (se README där)
+middleware.ts                  # @haus.se-spärr, failar stängt utan env
+vercel.json                    # Cron-schemat
 ```
-
-## Att göra (i prioriteringsordning)
-
-1. Skapa Supabase-projekt + kör migration + seed
-2. Konfigurera Google OAuth (`hosted_domain=haus.se`)
-3. Sätt `ANTHROPIC_ADMIN_KEY` + `CRON_SECRET` i Vercel
-4. Lägg in workspace_map i `integrations_credentials.metadata` för Anthropic
-5. Migrera pages från `lib/data` → `lib/db` (en sida i taget)
-6. Implementera Fortnox OAuth + Google BigQuery + Vercel-API

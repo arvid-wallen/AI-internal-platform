@@ -1,16 +1,36 @@
 import { listCustomers, listModels, listProjects } from "@/lib/db";
-import { Icons } from "@/components/icons";
+import { getSessionMember, hasRole } from "@/lib/auth";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { ExportButton } from "@/components/ExportButton";
 import { ProjectsFilter } from "./filter";
+import { NewProject, type ProjectCustomerOption } from "./NewProject";
 
 export const dynamic = "force-dynamic";
 
+// createProject needs real customer uuids; the domain Customer.id is a slug.
+async function listCustomerOptions(): Promise<ProjectCustomerOption[]> {
+  const supabase = await createSupabaseServer();
+  const { data } = await supabase
+    .from("customers")
+    .select("id, name, slug")
+    .neq("slug", "unassigned")
+    .order("name");
+  return (data ?? []).map((c) => ({
+    id: c.id as string,
+    name: c.name as string,
+  }));
+}
+
 export default async function ProjectsPage() {
-  const [projects, customers, models] = await Promise.all([
-    listProjects(),
-    listCustomers(),
-    listModels(),
-  ]);
+  const [projects, customers, models, member, customerOptions] =
+    await Promise.all([
+      listProjects(),
+      listCustomers(),
+      listModels(),
+      getSessionMember(),
+      listCustomerOptions(),
+    ]);
+  const canEdit = hasRole(member, "editor");
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const modelById = new Map(models.map((m) => [m.id, m]));
 
@@ -70,15 +90,7 @@ export default async function ProjectsPage() {
               ]),
             ]}
           />
-          <button
-            className="b primary"
-            type="button"
-            disabled
-            title="Kommer snart"
-          >
-            <Icons.Plus size={14} />
-            Nytt projekt
-          </button>
+          {canEdit && <NewProject customers={customerOptions} />}
         </div>
       </div>
       <ProjectsFilter rows={rows} />

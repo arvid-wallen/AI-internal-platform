@@ -3,11 +3,21 @@ import {
   exchangeCodeForTokens,
   writeStoredTokens,
 } from "@/lib/integrations/fortnox";
+import { getSessionMember, hasRole } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 // GET /api/auth/fortnox/callback?code=...&state=...
 export async function GET(request: NextRequest) {
+  // Same admin gate as /start — the state cookie is CSRF protection, not
+  // authorization.
+  const member = await getSessionMember();
+  if (!hasRole(member, "admin")) {
+    return NextResponse.redirect(
+      new URL("/settings?fortnox=error&reason=admin_required", request.url),
+    );
+  }
+
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");

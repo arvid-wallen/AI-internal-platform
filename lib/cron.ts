@@ -1,15 +1,19 @@
 // Shared helpers for cron route handlers.
 // All cron endpoints are gated by Bearer CRON_SECRET (settable in Vercel env).
+// Vercel sends `Authorization: Bearer $CRON_SECRET` on cron invocations when
+// the env var is set. The x-vercel-cron header is NOT trusted — it is not
+// stripped from inbound external requests and is therefore spoofable.
+import { timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { createSupabaseAdmin } from "./supabase/server";
+import { notifySlack } from "./notify";
 
 export function isCronAuthorized(request: NextRequest): boolean {
-  const auth = request.headers.get("authorization");
-  const vercelCronHeader = request.headers.get("x-vercel-cron");
   const expected = process.env.CRON_SECRET;
-  if (vercelCronHeader === "1") return true;          // Vercel-internal cron
   if (!expected) return false;
-  return auth === `Bearer ${expected}`;
+  const presented = Buffer.from(request.headers.get("authorization") ?? "");
+  const wanted = Buffer.from(`Bearer ${expected}`);
+  return presented.length === wanted.length && timingSafeEqual(presented, wanted);
 }
 
 export interface SyncRunStarted {
@@ -61,6 +65,24 @@ export async function finishSyncRun(
         error_message: opts.error ?? null,
       })
       .eq("id", runId);
+
+    // One central alert hook covers every cron. "partial" is deliberately
+    // silent — unconfigured integrations (google/vercel) finish partial daily
+    // and would drown the channel.
+    if (status === "failed" || status === "rate_limited") {
+      const { data: run } = await supabase
+        .from("integration_sync_runs")
+        .select("integration:integrations_credentials(provider_slug)")
+        .eq("id", runId)
+        .maybeSingle();
+      const integ = Array.isArray(run?.integration)
+        ? run?.integration[0]
+        : run?.integration;
+      const slug = integ?.provider_slug ?? "okänd integration";
+      await notifySlack(
+        `:warning: Sync *${slug}* ${status === "rate_limited" ? "rate-limited" : "misslyckades"}: ${opts.error ?? "okänt fel"}`,
+      );
+    }
   } catch {
     // Best-effort logging only.
   }

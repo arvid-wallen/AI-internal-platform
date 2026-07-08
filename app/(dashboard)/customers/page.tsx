@@ -1,17 +1,20 @@
 import { getPortfolio, listCustomers, listProjects } from "@/lib/db";
+import { getSessionMember, hasRole } from "@/lib/auth";
 import { fmt } from "@/lib/format";
-import { Icons } from "@/components/icons";
 import { ExportButton } from "@/components/ExportButton";
 import { CustomersFilter } from "./filter";
+import { NewCustomer } from "./NewCustomer";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
-  const [customers, projects, portfolio] = await Promise.all([
+  const [customers, projects, portfolio, member] = await Promise.all([
     listCustomers(),
     listProjects(),
     getPortfolio(),
+    getSessionMember(),
   ]);
+  const canEdit = hasRole(member, "editor");
 
   const counts = new Map<string, { total: number; live: number }>();
   for (const p of projects) {
@@ -54,15 +57,7 @@ export default async function CustomersPage() {
               ]),
             ]}
           />
-          <button
-            className="b primary"
-            type="button"
-            disabled
-            title="Kommer snart"
-          >
-            <Icons.Plus size={14} />
-            Ny kund
-          </button>
+          {canEdit && <NewCustomer />}
         </div>
       </div>
 

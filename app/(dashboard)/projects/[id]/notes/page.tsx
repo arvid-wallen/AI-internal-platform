@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProject, listNotesForProject } from "@/lib/db";
-import { Icons } from "@/components/icons";
+import { getSessionMember, hasRole } from "@/lib/auth";
+import { NoteForm } from "@/components/NoteForm";
 import { Pill } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -13,28 +14,20 @@ export default async function ProjectNotesPage({
   const { id } = await params;
   const p = await getProject(id);
   if (!p) notFound();
-  const list = await listNotesForProject(p.id);
+  const [list, member] = await Promise.all([
+    listNotesForProject(p.id),
+    getSessionMember(),
+  ]);
+  const canEdit = hasRole(member, "editor");
   return (
     <div className="stack">
-      <div className="card">
-        <div className="row gap-2">
-          <input
-            className="inp"
-            placeholder="Skriv en anteckning…"
-            aria-label="Ny anteckning"
-            disabled
-          />
-          <button
-            className="b primary"
-            type="button"
-            disabled
-            title="Kommer snart"
-          >
-            <Icons.Plus size={12} />
-            Spara
-          </button>
+      {canEdit ? (
+        <NoteForm parentType="project" parentId={p.id} />
+      ) : (
+        <div className="dim" style={{ fontSize: 12 }}>
+          Kräver redaktörsbehörighet för att skriva anteckningar.
         </div>
-      </div>
+      )}
       {list.map((n) => (
         <div key={n.id} className="card">
           <div className="row between">

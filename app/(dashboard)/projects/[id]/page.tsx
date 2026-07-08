@@ -8,6 +8,8 @@ import {
   listDependenciesForProject,
   listUpdatesForProject,
 } from "@/lib/db";
+import { getSessionMember, hasRole } from "@/lib/auth";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import {
@@ -18,24 +20,69 @@ import {
   StatusPill,
 } from "@/components/ui";
 import { LineChart } from "@/components/charts";
+import { EditProject } from "./EditProject";
 
 export const dynamic = "force-dynamic";
 
+// Raw project row + customer list for the edit form and GitHub-status card.
+// The domain object (getProject) lacks real uuids and the github_* columns.
+async function getEditData(slug: string) {
+  const supabase = await createSupabaseServer();
+  const [{ data: row }, { data: customers }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select(
+        "name, status, customer_id, monthly_revenue_sek, monthly_infra_budget_sek, github_repo_url, github_last_commit_at, github_open_prs, hosting_provider",
+      )
+      .eq("slug", slug)
+      .maybeSingle(),
+    supabase.from("customers").select("id, name").order("name"),
+  ]);
+  return {
+    row: row as {
+      name: string;
+      status: "discovery" | "building" | "live" | "paused" | "offboarded";
+      customer_id: string;
+      monthly_revenue_sek: number | null;
+      monthly_infra_budget_sek: number | null;
+      github_repo_url: string | null;
+      github_last_commit_at: string | null;
+      github_open_prs: number | null;
+      hosting_provider: string | null;
+    } | null,
+    customers: (customers ?? []).map((c) => ({
+      id: c.id as string,
+      name: c.name as string,
+    })),
+  };
+}
+
 export default async function ProjectOverviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ edit?: string }>;
 }) {
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
   const p = await getProject(id);
   if (!p) notFound();
-  const [c, m, usage, deps, updates] = await Promise.all([
+  const [c, m, usage, deps, updates, member, editData] = await Promise.all([
     getCustomer(p.customer_id),
     p.active_model ? getModel(p.active_model) : Promise.resolve(null),
     listDailyUsageForProject(p.id),
     listDependenciesForProject(p.id),
     listUpdatesForProject(p.id),
+    getSessionMember(),
+    getEditData(p.slug),
   ]);
+  const canEdit = hasRole(member, "editor");
+  const { row } = editData;
+  const hasGithubData =
+    row != null &&
+    (row.github_repo_url != null ||
+      row.github_last_commit_at != null ||
+      row.github_open_prs != null);
   const last14 = usage.slice(-14);
   const sum14 = last14.reduce((s, u) => s + u.cost_sek, 0);
   const margin = p.monthly_revenue - p.ai_cost - p.infra_cost;
@@ -47,6 +94,30 @@ export default async function ProjectOverviewPage({
 
   return (
     <div className="stack">
+      {canEdit && row && (
+        <EditProject
+          // Keyed on the search param: client navigation to ?edit=1 must
+          // remount the component so defaultOpen takes effect again.
+          key={sp.edit === "1" ? "edit-open" : "edit-closed"}
+          projectId={p.id}
+          defaultOpen={sp.edit === "1"}
+          customers={editData.customers}
+          current={{
+            name: row.name,
+            status: row.status,
+            customer_id: row.customer_id,
+            monthly_revenue_sek:
+              row.monthly_revenue_sek != null
+                ? Number(row.monthly_revenue_sek)
+                : null,
+            monthly_infra_budget_sek:
+              row.monthly_infra_budget_sek != null
+                ? Number(row.monthly_infra_budget_sek)
+                : null,
+            github_repo_url: row.github_repo_url,
+          }}
+        />
+      )}
       <div className="kpi-grid">
         <KpiCard
           icon="Coins"
@@ -182,6 +253,51 @@ export default async function ProjectOverviewPage({
               SWR-cache 60s, lokal fallback 1h.
             </div>
           </div>
+
+          {hasGithubData && (
+            <div className="card">
+              <SectionHead title="GitHub &amp; hosting" />
+              <dl className="def-list" style={{ marginTop: 4 }}>
+                <dt>Senaste commit</dt>
+                <dd className="tnum">
+                  {row.github_last_commit_at ? (
+                    new Date(row.github_last_commit_at).toLocaleString(
+                      "sv-SE",
+                      { dateStyle: "medium", timeStyle: "short" },
+                    )
+                  ) : (
+                    <span className="dim">—</span>
+                  )}
+                </dd>
+                <dt>Öppna PRs</dt>
+                <dd className="tnum">
+                  {row.github_open_prs ?? <span className="dim">—</span>}
+                </dd>
+                <dt>Repo</dt>
+                <dd>
+                  {row.github_repo_url ? (
+                    <a
+                      href={row.github_repo_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="tnum"
+                    >
+                      {row.github_repo_url.replace(
+                        /^https?:\/\/github\.com\//,
+                        "",
+                      )}
+                    </a>
+                  ) : (
+                    <span className="dim">—</span>
+                  )}
+                </dd>
+                <dt>Hosting</dt>
+                <dd>
+                  {row.hosting_provider ?? <span className="dim">—</span>}
+                </dd>
+              </dl>
+            </div>
+          )}
 
           <div className="card">
             <SectionHead

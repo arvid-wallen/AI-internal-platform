@@ -6,6 +6,8 @@ import {
   listModels,
   listProjectsForCustomer,
 } from "@/lib/db";
+import { getSessionMember, hasRole } from "@/lib/auth";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import {
@@ -15,8 +17,34 @@ import {
   SectionHead,
   StatusPill,
 } from "@/components/ui";
+import { EditCustomer, type EditCustomerValues } from "./EditCustomer";
 
 export const dynamic = "force-dynamic";
+
+// The route param is the slug; updateCustomer needs the real uuid, so fetch
+// the raw row (incl. contact fields the domain object drops) directly.
+async function getCustomerRow(slug: string): Promise<EditCustomerValues | null> {
+  const supabase = await createSupabaseServer();
+  const { data } = await supabase
+    .from("customers")
+    .select(
+      "id, name, customer_class, contract_status, invoice_email, primary_contact_name, primary_contact_email",
+    )
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    customer_class: (data.customer_class ?? "C") as EditCustomerValues["customer_class"],
+    contract_status: (data.contract_status ??
+      "live") as EditCustomerValues["contract_status"],
+    invoice_email: (data.invoice_email as string | null) ?? null,
+    primary_contact_name: (data.primary_contact_name as string | null) ?? null,
+    primary_contact_email:
+      (data.primary_contact_email as string | null) ?? null,
+  };
+}
 
 export default async function CustomerDetailPage({
   params,
@@ -27,11 +55,14 @@ export default async function CustomerDetailPage({
   const c = await getCustomer(id);
   if (!c) notFound();
 
-  const [ps, invs, models] = await Promise.all([
+  const [ps, invs, models, member, row] = await Promise.all([
     listProjectsForCustomer(c.id),
     listInvoicesForCustomer(c.id),
     listModels(),
+    getSessionMember(),
+    getCustomerRow(id),
   ]);
+  const canEdit = hasRole(member, "editor");
   const modelById = new Map(models.map((m) => [m.id, m]));
 
   const totalRev = ps.reduce((s, p) => s + p.monthly_revenue, 0);
@@ -65,10 +96,7 @@ export default async function CustomerDetailPage({
             <Icons.Ext size={14} />
             Öppna i Fortnox
           </button>
-          <button className="b" type="button" disabled title="Kommer snart">
-            <Icons.Edit size={14} />
-            Redigera
-          </button>
+          {canEdit && row && <EditCustomer customer={row} />}
         </div>
       </div>
 
