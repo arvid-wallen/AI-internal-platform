@@ -1,7 +1,8 @@
-// Fortnox OAuth 2.0 + Invoices API client.
+// Fortnox OAuth 2.0 + Invoices/Customers API client.
 // Docs:
 //  - OAuth: https://developer.fortnox.se/general/authentication/
 //  - Invoices: https://apps.fortnox.se/apidocs#tag/InvoicesResource
+// Rate limit: 25 requests / 5-second sliding window per access token → 429.
 
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 
@@ -10,6 +11,8 @@ const API_BASE = "https://api.fortnox.se/3";
 // Least-privilege: we only read invoices + customers, and resolve article
 // codes for project mapping. Dropping "settings"/"companyinformation" (unused
 // and admin-gated) so a non-system-admin may be able to authorize.
+// Supplier invoices (scope "supplierinvoice") are a deliberate later step —
+// adding a scope forces a re-consent round trip.
 export const FORTNOX_SCOPES = ["invoice", "customer", "article"].join(" ");
 
 export interface FortnoxTokens {
@@ -18,6 +21,63 @@ export interface FortnoxTokens {
   expires_in: number;          // seconds
   token_type: string;
   scope: string;
+}
+
+export class FortnoxRateLimitError extends Error {
+  constructor(url: string) {
+    super(`Fortnox rate limit (429) kvarstår efter retries: ${url}`);
+    this.name = "FortnoxRateLimitError";
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// All Fortnox API GETs go through this wrapper: on 429, honor Retry-After
+// (or exponential backoff) and retry up to 5 times before giving up with a
+// typed error so cron handlers can record status "rate_limited".
+async function fortnoxFetch(
+  url: string,
+  accessToken: string,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (res.status !== 429) return res;
+    if (attempt >= 5) throw new FortnoxRateLimitError(url);
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const waitMs =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : 2 ** attempt * 1000;
+    await sleep(waitMs);
+  }
+}
+
+// Bounded-concurrency map. Concurrency 4 with the 429-retry above stays well
+// under Fortnox's 25 req/5s window including the list-page calls.
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length) return;
+        results[i] = await fn(items[i], i);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 // ============ OAuth flow ============
@@ -120,10 +180,49 @@ export async function ensureFreshAccessToken(): Promise<string | null> {
   if (expiresAt > Date.now() + 30_000) {
     return stored.access_token;
   }
-  // Refresh.
-  const fresh = await refreshAccessToken(stored.refresh_token);
-  await writeStoredTokens(fresh);
-  return fresh.access_token;
+  try {
+    const fresh = await refreshAccessToken(stored.refresh_token);
+    await writeStoredTokens(fresh);
+    return fresh.access_token;
+  } catch (e) {
+    // Fortnox refresh tokens are single-use. If a concurrent run (manual
+    // "Synka nu" during the nightly cron) already rotated it, our stored copy
+    // is stale — re-read once and use the tokens the other run wrote.
+    const reread = await readStoredTokens();
+    if (
+      reread &&
+      reread.refresh_token !== stored.refresh_token &&
+      reread.token_expires_at &&
+      new Date(reread.token_expires_at).getTime() > Date.now() + 30_000
+    ) {
+      return reread.access_token;
+    }
+    throw e;
+  }
+}
+
+// ============ Integration metadata (sync cursors etc.) ============
+
+export async function readFortnoxMetadata(): Promise<Record<string, unknown>> {
+  const supabase = createSupabaseAdmin();
+  const { data } = await supabase
+    .from("integrations_credentials")
+    .select("metadata")
+    .eq("provider_slug", "fortnox")
+    .maybeSingle();
+  return (data?.metadata as Record<string, unknown> | null) ?? {};
+}
+
+// Spread-merge so sibling metadata keys survive.
+export async function patchFortnoxMetadata(
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const supabase = createSupabaseAdmin();
+  const current = await readFortnoxMetadata();
+  await supabase
+    .from("integrations_credentials")
+    .update({ metadata: { ...current, ...patch } })
+    .eq("provider_slug", "fortnox");
 }
 
 // ============ Invoices API ============
@@ -134,9 +233,15 @@ export interface FortnoxInvoice {
   CustomerName: string;
   InvoiceDate: string;          // YYYY-MM-DD
   DueDate: string;
-  Total: number;
+  Total: number;                // incl VAT, in invoice currency
   TotalToPay: number;
+  Net: number;                  // excl VAT, in invoice currency
+  TotalVAT: number;
+  Balance: number;
   Currency: string;
+  CurrencyRate: number;         // SEK per CurrencyUnit of Currency
+  CurrencyUnit: number;
+  InvoiceType: string;          // INVOICE | AGREEMENTINVOICE | ...
   Booked: boolean;
   Cancelled: boolean;
   FinalPayDate: string | null;
@@ -166,45 +271,53 @@ interface InvoiceDetailResponse {
   Invoice: FortnoxInvoice;
 }
 
-export async function listInvoicesSince(
-  fromDate: string,
+export interface ListInvoicesOptions {
+  fromDate?: string;      // YYYY-MM-DD — backfill mode
+  lastModified?: string;  // "YYYY-MM-DD HH:MM" — incremental mode
+}
+
+export async function listInvoices(
+  opts: ListInvoicesOptions,
   accessToken: string,
 ): Promise<FortnoxInvoice[]> {
   const out: FortnoxInvoice[] = [];
   let page = 1;
-  // List endpoint paginates 100 per page.
   for (;;) {
     const url = new URL(`${API_BASE}/invoices`);
-    url.searchParams.set("fromdate", fromDate);
+    if (opts.fromDate) url.searchParams.set("fromdate", opts.fromDate);
+    if (opts.lastModified)
+      url.searchParams.set("lastmodified", opts.lastModified);
     url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", "100");
-    const res = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+    url.searchParams.set("limit", "500");
+    const res = await fortnoxFetch(url.toString(), accessToken);
     if (!res.ok) {
       throw new Error(`Fortnox /invoices ${res.status}: ${await res.text()}`);
     }
     const body = (await res.json()) as InvoiceListResponse;
-    // Fetch each invoice's detail in parallel (small N).
-    const details = await Promise.all(
-      body.Invoices.map(async (i) => {
-        const r = await fetch(`${API_BASE}/invoices/${i.DocumentNumber}`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-        });
-        if (!r.ok) return null;
-        return ((await r.json()) as InvoiceDetailResponse).Invoice;
-      }),
-    );
-    for (const d of details) if (d) out.push(d);
-    if (body.MetaInformation["@CurrentPage"] >= body.MetaInformation["@TotalPages"]) break;
+
+    // Detail fetches with bounded concurrency; a failed detail throws (a
+    // silently dropped invoice corrupts revenue).
+    const details = await mapWithConcurrency(body.Invoices, 4, async (i) => {
+      const r = await fortnoxFetch(
+        `${API_BASE}/invoices/${encodeURIComponent(i.DocumentNumber)}`,
+        accessToken,
+      );
+      if (!r.ok) {
+        throw new Error(
+          `Fortnox /invoices/${i.DocumentNumber} ${r.status}: ${await r.text()}`,
+        );
+      }
+      return ((await r.json()) as InvoiceDetailResponse).Invoice;
+    });
+    out.push(...details);
+
+    if (
+      body.MetaInformation["@CurrentPage"] >=
+      body.MetaInformation["@TotalPages"]
+    )
+      break;
     page += 1;
-    if (page > 50) break;        // safety
+    if (page > 50) break; // safety: 25k invoices
   }
   return out;
 }
@@ -242,13 +355,8 @@ export async function listCustomers(
   for (;;) {
     const url = new URL(`${API_BASE}/customers`);
     url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", "100");
-    const res = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+    url.searchParams.set("limit", "500");
+    const res = await fortnoxFetch(url.toString(), accessToken);
     if (!res.ok) {
       throw new Error(`Fortnox /customers ${res.status}: ${await res.text()}`);
     }

@@ -5,6 +5,7 @@ import { Icons } from "@/components/icons";
 import { ProviderChip, SectionHead } from "@/components/ui";
 import { fmt } from "@/lib/format";
 import { switchActiveModel } from "@/lib/actions/switch-model";
+import { rotateConfigBearer } from "@/lib/actions/config-bearer";
 import type { AIModel } from "@/lib/types";
 
 interface HistoryRow {
@@ -23,17 +24,35 @@ export function ProjectModelsClient({
   activeModelId,
   models,
   history,
+  canEdit,
+  canRotate,
 }: {
   projectId: string;
   projectSlug: string;
   activeModelId: string;
   models: AIModel[];
   history: HistoryRow[];
+  canEdit: boolean;
+  canRotate: boolean;
 }) {
   const [selected, setSelected] = useState(activeModelId);
   const [activeModel, setActiveModel] = useState(activeModelId);
   const [pending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
+  const [rotating, startRotate] = useTransition();
+  const [rotatedToken, setRotatedToken] = useState<string | null>(null);
+
+  const rotate = () => {
+    startRotate(async () => {
+      const res = await rotateConfigBearer(projectId);
+      if (res.ok && res.token) {
+        setRotatedToken(res.token);
+      } else {
+        setToast("Fel: " + (res.message ?? "okänd"));
+        setTimeout(() => setToast(null), 4000);
+      }
+    });
+  };
 
   const current = models.find((m) => m.id === activeModel);
   const candidate = models.find((m) => m.id === selected);
@@ -42,11 +61,9 @@ export function ProjectModelsClient({
   const activate = () => {
     if (selected === activeModel) return;
     const toModelId = selected;
-    const fromModelId = activeModel;
     startTransition(async () => {
       const res = await switchActiveModel({
         projectId,
-        fromModelId,
         toModelId,
       });
       if (res.ok) {
@@ -104,7 +121,7 @@ export function ProjectModelsClient({
                 <div>
                   {mo.id === activeModel ? (
                     <span className="mp-active-tag">Aktiv</span>
-                  ) : selected === mo.id ? (
+                  ) : selected === mo.id && canEdit ? (
                     <button
                       className="b sm primary"
                       type="button"
@@ -247,15 +264,21 @@ export function ProjectModelsClient({
                 })()}
               </dd>
             </dl>
-            <button
-              className="b primary mt-4"
-              style={{ width: "100%", justifyContent: "center" }}
-              type="button"
-              disabled={pending}
-              onClick={activate}
-            >
-              {pending ? "Aktiverar…" : "Aktivera " + candidate.display}
-            </button>
+            {canEdit ? (
+              <button
+                className="b primary mt-4"
+                style={{ width: "100%", justifyContent: "center" }}
+                type="button"
+                disabled={pending}
+                onClick={activate}
+              >
+                {pending ? "Aktiverar…" : "Aktivera " + candidate.display}
+              </button>
+            ) : (
+              <p className="dim mt-4" style={{ fontSize: 12 }}>
+                Modellbyte kräver redaktörsbehörighet.
+              </p>
+            )}
           </div>
         )}
 
@@ -280,7 +303,7 @@ export function ProjectModelsClient({
           >
             {`GET ai-hub.haus.se
   /api/projects/${projectSlug}/config
-Bearer ${"•".repeat(24)}...4f2a
+Authorization: Bearer <projekt-token>
 
 → {
     "active_model": {
@@ -290,16 +313,44 @@ Bearer ${"•".repeat(24)}...4f2a
     }
   }`}
           </pre>
-          <div className="row mt-3" style={{ gap: 6 }}>
-            <button className="b sm" type="button">
-              <Icons.Refresh size={12} />
-              Rotera bearer
-            </button>
-            <button className="b sm" type="button">
-              <Icons.Eye size={12} />
-              Visa
-            </button>
-          </div>
+          {rotatedToken && (
+            <div
+              className="mt-3"
+              style={{
+                padding: "10px 12px",
+                background: "var(--c-mint-soft)",
+                color: "var(--c-mint-ink)",
+                borderRadius: 6,
+                fontSize: 12,
+              }}
+            >
+              <strong>Ny token — visas bara en gång:</strong>
+              <pre
+                style={{
+                  margin: "6px 0 0",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                }}
+              >
+                {rotatedToken}
+              </pre>
+            </div>
+          )}
+          {canRotate && (
+            <div className="row mt-3" style={{ gap: 6 }}>
+              <button
+                className="b sm"
+                type="button"
+                disabled={rotating}
+                onClick={rotate}
+              >
+                <Icons.Refresh size={12} />
+                {rotating ? "Roterar…" : "Rotera bearer"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

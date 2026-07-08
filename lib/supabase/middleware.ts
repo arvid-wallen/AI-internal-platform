@@ -6,14 +6,17 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
-  // Mock mode: with no Supabase env vars, skip auth so pages render on mock
-  // data (mirrors isSupabaseConfigured() in lib/db). Without this guard,
-  // createServerClient throws and every route 500s.
+  // Fail closed: without Supabase env vars there is no auth to enforce and no
+  // data to render (mock mode was removed with lib/data.ts) — a silent bypass
+  // would expose the whole dashboard unauthenticated on a misconfigured deploy.
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   ) {
-    return response;
+    return new NextResponse(
+      "Servern är felkonfigurerad — Supabase-miljövariabler saknas.",
+      { status: 503 },
+    );
   }
 
   const supabase = createServerClient(

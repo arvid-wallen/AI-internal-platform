@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { friendlyDbError, getSessionMember, hasRole } from "@/lib/auth";
+import { notifySlack } from "@/lib/notify";
+import { INVALID_INPUT_MESSAGE, switchModelSchema } from "@/lib/schemas";
 
 export interface SwitchModelInput {
-  projectId: string;
-  fromModelId: string | null;
+  projectId: string; // domain id "p-<slug>" or bare slug
   toModelId: string;
   reason?: string;
 }
@@ -16,18 +18,20 @@ export interface SwitchModelResult {
   message?: string;
 }
 
-// Switches the active AI model on a project. Atomically closes the previous
-// project_models row (effective_to = now), inserts a new one, and writes
-// an immutable audit row in model_switches.
-//
-// On hub-only deployments (no Supabase configured), returns ok: true as a
-// no-op so the picker UI stays functional in mock mode.
+const stripP = (idOrSlug: string) =>
+  idOrSlug.startsWith("p-") ? idOrSlug.slice(2) : idOrSlug;
+
+// Switches the active AI model on a project via the switch_active_model RPC
+// (one transaction: closes the previous project_models row, inserts the new
+// one, writes the model_switches audit row with the acting team member).
 export async function switchActiveModel(
   input: SwitchModelInput,
 ): Promise<SwitchModelResult> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    return { ok: true, message: "Mock mode — change not persisted." };
+    return { ok: false, message: "Supabase är inte konfigurerat." };
   }
+  const parsed = switchModelSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: INVALID_INPUT_MESSAGE };
 
   let supabase;
   try {
@@ -39,44 +43,28 @@ export async function switchActiveModel(
     };
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Not authenticated" };
+  const member = await getSessionMember();
+  if (!member) return { ok: false, message: "Inte inloggad." };
+  if (!hasRole(member, "editor")) {
+    return {
+      ok: false,
+      message: "Du har inte behörighet att byta modell (kräver redaktör).",
+    };
+  }
 
-  const now = new Date().toISOString();
-
-  // Close current active row.
-  const { error: closeErr } = await supabase
-    .from("project_models")
-    .update({ is_active: false, effective_to: now })
-    .eq("project_id", input.projectId)
-    .eq("is_active", true)
-    .is("effective_to", null);
-  if (closeErr) return { ok: false, message: closeErr.message };
-
-  // Insert new active row.
-  const { error: insertErr } = await supabase.from("project_models").insert({
-    project_id: input.projectId,
-    model_id: input.toModelId,
-    role: "primary",
-    is_active: true,
-    effective_from: now,
-    note: input.reason ?? null,
+  const slug = stripP(input.projectId);
+  const { error } = await supabase.rpc("switch_active_model", {
+    p_project_slug: slug,
+    p_to_model: input.toModelId,
+    p_reason: input.reason ?? null,
   });
-  if (insertErr) return { ok: false, message: insertErr.message };
+  if (error) return { ok: false, message: friendlyDbError(error) };
 
-  // Audit row (immutable history).
-  const { error: auditErr } = await supabase.from("model_switches").insert({
-    project_id: input.projectId,
-    from_model_id: input.fromModelId,
-    to_model_id: input.toModelId,
-    switched_at: now,
-    reason: input.reason ?? null,
-  });
-  if (auditErr) return { ok: false, message: auditErr.message };
-
-  // Fire-and-forget post-commit tasks: Slack notify, audit log refresh.
+  // Fire-and-forget post-commit tasks.
   after(async () => {
-    // TODO: notifySlack(`Modell bytt på ${input.projectId} → ${input.toModelId}`)
+    await notifySlack(
+      `Modell bytt på *${slug}* → ${input.toModelId} av ${member.name}`,
+    );
   });
 
   revalidatePath(`/projects/${input.projectId}`);

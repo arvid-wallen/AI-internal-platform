@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { randomBytes } from "node:crypto";
 import { getAuthorizationUrl } from "@/lib/integrations/fortnox";
+import { getSessionMember, hasRole } from "@/lib/auth";
 
 // GET /api/auth/fortnox/start
 // Redirects an admin to Fortnox OAuth consent page. Sets a signed state cookie
@@ -8,8 +9,15 @@ import { getAuthorizationUrl } from "@/lib/integrations/fortnox";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  // TODO: gate to admins (read team_members.role). Skipped here — middleware
-  // already requires @haus.se session, so this is admin-trusted for now.
+  // Connecting Fortnox is an org-wide action — admins only (middleware
+  // already requires an @haus.se session, this adds the role gate).
+  const member = await getSessionMember();
+  if (!hasRole(member, "admin")) {
+    return NextResponse.json(
+      { error: "Endast administratörer kan ansluta Fortnox." },
+      { status: 403 },
+    );
+  }
 
   const state = randomBytes(16).toString("hex");
   const baseUrl =

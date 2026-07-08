@@ -9,6 +9,7 @@ import {
 } from "@/lib/cron";
 import { readGoogleConfig, fetchVertexBilling } from "@/lib/integrations/google";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { FX_MISSING_ERROR, fxStaleWarning, getLatestUsdSek } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -53,13 +54,12 @@ export async function GET(request: NextRequest) {
     const projectBySlug = new Map<string, string>(
       (projectRows ?? []).map((p) => [p.slug, p.id]),
     );
-    const { data: fx } = await supabase
-      .from("fx_rates")
-      .select("usd_sek")
-      .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const usdSek = fx?.usd_sek ?? 10.78;
+    const fx = await getLatestUsdSek(supabase);
+    if (!fx) {
+      await finishSyncRun(run?.id ?? null, "failed", { error: FX_MISSING_ERROR });
+      return jsonError(FX_MISSING_ERROR);
+    }
+    const usdSek = fx.usdSek;
 
     const rows = billing.map((b) => ({
       project_id: projectBySlug.get(b.haus_project) ?? null,
@@ -91,7 +91,10 @@ export async function GET(request: NextRequest) {
       if (error) throw error;
     }
 
-    await finishSyncRun(run?.id ?? null, "ok", { records: rows.length });
+    await finishSyncRun(run?.id ?? null, fx.stale ? "partial" : "ok", {
+      records: rows.length,
+      error: fx.stale ? fxStaleWarning(fx.date) : undefined,
+    });
     return jsonOk({ records: rows.length });
   } catch (e) {
     await finishSyncRun(run?.id ?? null, "failed", { error: errMsg(e) });

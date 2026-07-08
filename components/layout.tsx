@@ -3,6 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icons, type IconName } from "./icons";
+import { signOut } from "@/lib/actions/auth";
+
+export interface SidebarMember {
+  name: string;
+  initials: string;
+  role: "admin" | "editor" | "viewer";
+}
+
+const ROLE_LABEL: Record<SidebarMember["role"], string> = {
+  admin: "Admin",
+  editor: "Redaktör",
+  viewer: "Läsbehörighet",
+};
 
 interface NavItem {
   id: string;
@@ -46,12 +59,6 @@ function navGroups(customerCount: number, projectCount: number): NavGroup[] {
       ],
     },
     {
-      section: "Workflows",
-      items: [
-        { id: "workflows", label: "Workflows & Tools", icon: "Workflow", href: "/workflows" },
-      ],
-    },
-    {
       section: "Admin",
       items: [
         { id: "wiki", label: "Wiki & Ideas", icon: "Book", href: "/wiki" },
@@ -64,9 +71,11 @@ function navGroups(customerCount: number, projectCount: number): NavGroup[] {
 export function Sidebar({
   customerCount,
   projectCount,
+  member,
 }: {
   customerCount: number;
   projectCount: number;
+  member: SidebarMember | null;
 }) {
   const pathname = usePathname() ?? "/";
   const topSegment = pathname.split("/")[1] || "dashboard";
@@ -107,14 +116,24 @@ export function Sidebar({
         </div>
       ))}
       <div className="sidebar-foot">
-        <div className="avatar">AÖ</div>
+        <div className="avatar">{member?.initials ?? "?"}</div>
         <div style={{ minWidth: 0, flex: 1, lineHeight: 1.2 }}>
-          <div className="user-name">Arvid Ö.</div>
-          <div className="user-role">Admin · @haus.se</div>
+          <div className="user-name">{member?.name ?? "Okänd"}</div>
+          <div className="user-role">
+            {member ? ROLE_LABEL[member.role] : "—"} · @haus.se
+          </div>
         </div>
-        <span className="ws-chev">
-          <Icons.Chev size={14} />
-        </span>
+        <form action={signOut}>
+          <button
+            className="ws-chev"
+            type="submit"
+            title="Logga ut"
+            aria-label="Logga ut"
+            style={{ background: "none", border: 0, cursor: "pointer", padding: 4 }}
+          >
+            <Icons.Logout size={14} />
+          </button>
+        </form>
       </div>
     </aside>
   );

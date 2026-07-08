@@ -1,18 +1,97 @@
 import { listIntegrations, listSyncRuns, listTeam } from "@/lib/db";
 import { getMappingData } from "@/lib/actions/workspace-map";
+import { getSessionMember, hasRole } from "@/lib/auth";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { Icons } from "@/components/icons";
 import { Pill, SectionHead, StatusPill } from "@/components/ui";
+import { FortnoxConnect } from "./FortnoxConnect";
 import { WorkspaceMapping } from "./WorkspaceMapping";
+import {
+  ProjectCustomerMapping,
+  type CustomerOption,
+  type UnassignedProject,
+} from "./ProjectCustomerMapping";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
-  const [integrations, syncRuns, team, mapping] = await Promise.all([
+// Fortnox connection state. integrations_credentials is admin-only by RLS,
+// so non-admins simply read null here — the card then shows a neutral text.
+async function getFortnoxStatus() {
+  const supabase = await createSupabaseServer();
+  const { data } = await supabase
+    .from("integrations_credentials")
+    .select("access_token, token_expires_at, last_synced_at")
+    .eq("provider_slug", "fortnox")
+    .maybeSingle();
+  return {
+    connected: !!data?.access_token,
+    tokenExpiresAt: (data?.token_expires_at as string | null) ?? null,
+    lastSyncedAt: (data?.last_synced_at as string | null) ?? null,
+  };
+}
+
+// Projects still owned by the placeholder customer + all real customers.
+// Needs real uuids (assignProjectCustomers updates by id), so query directly.
+async function getUnassignedProjects(): Promise<{
+  projects: UnassignedProject[];
+  customers: CustomerOption[];
+}> {
+  const supabase = await createSupabaseServer();
+  const [{ data: projects }, { data: customers }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, slug, customer:customers!inner(slug)")
+      .eq("customer.slug", "unassigned")
+      .order("name"),
+    supabase
+      .from("customers")
+      .select("id, name, slug")
+      .neq("slug", "unassigned")
+      .order("name"),
+  ]);
+  return {
+    projects: (projects ?? []).map((p) => ({
+      id: p.id as string,
+      name: p.name as string,
+      slug: p.slug as string,
+    })),
+    customers: (customers ?? []).map((c) => ({
+      id: c.id as string,
+      name: c.name as string,
+    })),
+  };
+}
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ fortnox?: string; reason?: string }>;
+}) {
+  const [
+    integrations,
+    syncRuns,
+    team,
+    mapping,
+    member,
+    fortnox,
+    unassigned,
+    params,
+  ] = await Promise.all([
     listIntegrations(),
     listSyncRuns(),
     listTeam(),
     getMappingData(),
+    getSessionMember(),
+    getFortnoxStatus(),
+    getUnassignedProjects(),
+    searchParams,
   ]);
+  const isAdmin = hasRole(member, "admin");
+  const canEdit = hasRole(member, "editor");
+  const fortnoxQuery =
+    params.fortnox === "connected" || params.fortnox === "error"
+      ? params.fortnox
+      : null;
 
   return (
     <div className="page">
@@ -28,6 +107,20 @@ export default async function SettingsPage() {
 
       <div className="grid-12">
         <div className="stack">
+          {canEdit && (
+            <ProjectCustomerMapping
+              projects={unassigned.projects}
+              customers={unassigned.customers}
+            />
+          )}
+          <FortnoxConnect
+            isAdmin={isAdmin}
+            connected={fortnox.connected}
+            tokenExpiresAt={fortnox.tokenExpiresAt}
+            lastSyncedAt={fortnox.lastSyncedAt}
+            queryStatus={fortnoxQuery}
+            queryReason={params.reason ?? null}
+          />
           <div className="card">
             <SectionHead
               title="Integrationer"
@@ -121,7 +214,7 @@ export default async function SettingsPage() {
             </div>
           </div>
 
-          {mapping.configured && (
+          {mapping.configured && isAdmin && (
             <>
               <WorkspaceMapping
                 provider="anthropic"

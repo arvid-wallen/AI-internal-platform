@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { friendlyDbError, getSessionMember, hasRole } from "@/lib/auth";
+import { INVALID_INPUT_MESSAGE, workspaceMapSchema } from "@/lib/schemas";
 
 // Maps a provider's workspace/project id -> our project uuid, stored in
 // integrations_credentials.metadata. Anthropic uses key "workspace_map",
@@ -61,11 +63,18 @@ export async function saveWorkspaceMap(
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return { ok: false, message: "Supabase ar inte konfigurerat." };
   }
+  const member = await getSessionMember();
+  if (!member) return { ok: false, message: "Inte inloggad." };
+  // integrations_credentials is admin-only by RLS.
+  if (!hasRole(member, "admin")) {
+    return {
+      ok: false,
+      message: "Endast administratörer kan ändra mappningen.",
+    };
+  }
+  const parsed = workspaceMapSchema.safeParse({ provider, map });
+  if (!parsed.success) return { ok: false, message: INVALID_INPUT_MESSAGE };
   const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Inte inloggad." };
 
   const { data: cred } = await supabase
     .from("integrations_credentials")
@@ -84,7 +93,7 @@ export async function saveWorkspaceMap(
     .from("integrations_credentials")
     .update({ metadata: next })
     .eq("provider_slug", provider);
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: friendlyDbError(error) };
 
   revalidatePath("/settings");
   return { ok: true };

@@ -5,9 +5,26 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { friendlyDbError, getSessionMember, hasRole } from "@/lib/auth";
 import { buildImportPreview } from "@/lib/integrations/card-costs";
 import { normalizeMerchant } from "@/lib/integrations/card-costs/rules";
+import {
+  INVALID_INPUT_MESSAGE,
+  manualCostSchema,
+  saveCardCostsSchema,
+} from "@/lib/schemas";
 import type { CardImportRow, VendorRule } from "@/lib/types";
+
+// Mutations require the editor role; RLS enforces this too, but checking here
+// gives a friendly Swedish message instead of a raw Postgres error.
+async function requireEditor(): Promise<string | null> {
+  const member = await getSessionMember();
+  if (!member) return "Inte inloggad.";
+  if (!hasRole(member, "editor")) {
+    return "Du har läsbehörighet — import kräver redaktörsroll.";
+  }
+  return null;
+}
 
 export interface ImportProject {
   id: string;
@@ -88,11 +105,11 @@ export async function saveCardCosts(
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return { ok: false, message: "Supabase är inte konfigurerat." };
   }
+  const roleError = await requireEditor();
+  if (roleError) return { ok: false, message: roleError };
+  const parsedRows = saveCardCostsSchema.safeParse(rows);
+  if (!parsedRows.success) return { ok: false, message: INVALID_INPUT_MESSAGE };
   const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Inte inloggad." };
 
   const included = rows.filter((r) => r.include && r.amount_sek > 0);
   const months = [...new Set(included.map((r) => r.period_month))];
@@ -106,7 +123,7 @@ export async function saveCardCosts(
     .delete()
     .eq("source", "csv_import")
     .in("period_month", months);
-  if (delErr) return { ok: false, message: delErr.message };
+  if (delErr) return { ok: false, message: friendlyDbError(delErr) };
 
   const insertRows = included.map((r) => ({
     project_id: r.project_id,
@@ -122,7 +139,7 @@ export async function saveCardCosts(
     const { error: insErr } = await supabase
       .from("costs_monthly")
       .insert(insertRows);
-    if (insErr) return { ok: false, message: insErr.message };
+    if (insErr) return { ok: false, message: friendlyDbError(insErr) };
   }
 
   await learnRules(supabase, included);
@@ -189,16 +206,15 @@ export async function saveManualCost(
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return { ok: false, message: "Supabase är inte konfigurerat." };
   }
+  const roleError = await requireEditor();
+  if (roleError) return { ok: false, message: roleError };
+  const parsedInput = manualCostSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return { ok: false, message: INVALID_INPUT_MESSAGE };
+  }
   const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Inte inloggad." };
 
   const vendor = input.vendor.trim();
-  if (!vendor || !input.amount_sek) {
-    return { ok: false, message: "Leverantör och belopp krävs." };
-  }
   const period =
     input.period_month.length === 7
       ? input.period_month + "-01"
@@ -216,7 +232,7 @@ export async function saveManualCost(
     .eq("period_month", period);
   del = projectId ? del.eq("project_id", projectId) : del.is("project_id", null);
   const { error: delErr } = await del;
-  if (delErr) return { ok: false, message: delErr.message };
+  if (delErr) return { ok: false, message: friendlyDbError(delErr) };
 
   const { error } = await supabase.from("costs_monthly").insert({
     project_id: projectId,
@@ -227,7 +243,7 @@ export async function saveManualCost(
     source: "manual",
     notes: input.notes ?? null,
   });
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: friendlyDbError(error) };
 
   await supabase.rpc("refresh_pnl_monthly");
   revalidatePath("/costs");

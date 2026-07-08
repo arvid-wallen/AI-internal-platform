@@ -12,6 +12,7 @@ import {
 // Always server-render — portfolio totals + token usage are stale within
 // minutes of every cron sync.
 export const dynamic = "force-dynamic";
+import { getSessionMember } from "@/lib/auth";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import { KpiCard, MarginBar, ProviderChip, SectionHead } from "@/components/ui";
@@ -27,16 +28,25 @@ interface AttentionCard {
 }
 
 export default async function DashboardPage() {
-  const [portfolio, daily, topByCost, updates, invoices, syncRuns, projects] =
-    await Promise.all([
-      getPortfolio(),
-      getDailyPortfolio(60),
-      getTopProjectsByAICost(6),
-      getRecentUpdates(6),
-      listInvoices(),
-      listSyncRuns(12),
-      listProjects(),
-    ]);
+  const [
+    portfolio,
+    daily,
+    topByCost,
+    updates,
+    invoices,
+    syncRuns,
+    projects,
+    member,
+  ] = await Promise.all([
+    getPortfolio(),
+    getDailyPortfolio(60),
+    getTopProjectsByAICost(6),
+    getRecentUpdates(6),
+    listInvoices(),
+    listSyncRuns(12),
+    listProjects(),
+    getSessionMember(),
+  ]);
 
   const last30 = daily.slice(-30);
   const prev30 = daily.slice(-60, -30);
@@ -124,7 +134,7 @@ export default async function DashboardPage() {
         <div className="left">
           <div className="page-eyebrow">Operations · {dateStr}</div>
           <h1 className="page-title">
-            {greeting}, <em>Arvid.</em>
+            {greeting}, <em>{member?.name.split(" ")[0] ?? "kollega"}.</em>
           </h1>
           <p className="page-sub">
             {portfolio.project_count} projekt över {portfolio.customer_count} kunder.
@@ -134,14 +144,14 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="actions">
-          <button className="b ghost" type="button">
+          <Link className="b ghost" href="/settings">
             <Icons.Refresh size={14} />
-            Sync now
-          </button>
-          <button className="b primary" type="button">
+            Sync-status
+          </Link>
+          <Link className="b primary" href="/projects">
             <Icons.Plus size={14} />
             Nytt projekt
-          </button>
+          </Link>
         </div>
       </div>
 

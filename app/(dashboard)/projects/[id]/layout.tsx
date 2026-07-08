@@ -6,6 +6,7 @@ import {
   listDependenciesForProject,
   listNotesForProject,
 } from "@/lib/db";
+import { getSessionMember, hasRole } from "@/lib/auth";
 import { fmt } from "@/lib/format";
 import { Icons } from "@/components/icons";
 import { Pill, StatusPill } from "@/components/ui";
@@ -23,11 +24,13 @@ export default async function ProjectDetailLayout({
   const { id } = await params;
   const p = await getProject(id);
   if (!p) notFound();
-  const [c, deps, notes] = await Promise.all([
+  const [c, deps, notes, member] = await Promise.all([
     getCustomer(p.customer_id),
     listDependenciesForProject(p.id),
     listNotesForProject(p.id),
+    getSessionMember(),
   ]);
+  const canEdit = hasRole(member, "editor");
 
   const tabs = [
     { id: "overview", label: "Overview", href: `/projects/${p.id}` },
@@ -101,10 +104,12 @@ export default async function ProjectDetailLayout({
             <Icons.Ext size={14} />
             Öppna i GitHub
           </a>
-          <button className="b" type="button" disabled title="Kommer snart">
-            <Icons.Edit size={14} />
-            Redigera
-          </button>
+          {canEdit && (
+            <Link className="b" href={`/projects/${p.id}?edit=1`}>
+              <Icons.Edit size={14} />
+              Redigera
+            </Link>
+          )}
           <Link className="b primary" href={`/projects/${p.id}/models`}>
             <Icons.Brain size={14} />
             Byt modell

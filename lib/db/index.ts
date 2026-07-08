@@ -29,23 +29,53 @@ const isSupabaseConfigured = () => !!process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 // ============ Customers ============
 
+// MRR per customer from v_customer_mrr: prefer recurring (avtalsfakturor)
+// when present, else trailing-3-month invoiced average.
+async function fetchMrrByCustomer(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+): Promise<Map<string, number>> {
+  const { data } = await supabase
+    .from("v_customer_mrr")
+    .select("customer_id, recurring_mrr_sek, trailing3_avg_sek");
+  const map = new Map<string, number>();
+  for (const r of data ?? []) {
+    const recurring = Number(r.recurring_mrr_sek ?? 0);
+    const trailing = Number(r.trailing3_avg_sek ?? 0);
+    map.set(r.customer_id as string, recurring > 0 ? recurring : trailing);
+  }
+  return map;
+}
+
 export async function listCustomers(): Promise<Customer[]> {
   const supabase = await createSupabaseServer();
-  const { data } = await supabase
-    .from("customers")
-    .select("*, account_manager:team_members(full_name)")
-    .order("name");
-  return (data ?? []).map((r) => toCustomer(r as unknown as DbCustomer));
+  const [{ data }, mrrMap] = await Promise.all([
+    supabase
+      .from("customers")
+      .select("*, account_manager:team_members(full_name)")
+      .order("name"),
+    fetchMrrByCustomer(supabase),
+  ]);
+  return (data ?? []).map((r) =>
+    toCustomer(r as unknown as DbCustomer, mrrMap.get((r as { id: string }).id) ?? 0),
+  );
 }
 
 export async function getCustomer(idOrSlug: string): Promise<Customer | null> {
   const supabase = await createSupabaseServer();
-  const { data } = await supabase
-    .from("customers")
-    .select("*, account_manager:team_members(full_name)")
-    .eq("slug", idOrSlug)
-    .maybeSingle();
-  return data ? toCustomer(data as unknown as DbCustomer) : null;
+  const [{ data }, mrrMap] = await Promise.all([
+    supabase
+      .from("customers")
+      .select("*, account_manager:team_members(full_name)")
+      .eq("slug", idOrSlug)
+      .maybeSingle(),
+    fetchMrrByCustomer(supabase),
+  ]);
+  return data
+    ? toCustomer(
+        data as unknown as DbCustomer,
+        mrrMap.get((data as { id: string }).id) ?? 0,
+      )
+    : null;
 }
 
 // ============ Projects ============
@@ -53,13 +83,39 @@ export async function getCustomer(idOrSlug: string): Promise<Customer | null> {
 const PROJECT_SELECT =
   "*, customer:customers(slug), project_models(is_active, model:ai_models(model_id))";
 
+// Current-month AI cost per project uuid (token_usage_daily).
+async function fetchMonthAiCostByProject(
+  supabase: Awaited<ReturnType<typeof createSupabaseServer>>,
+  projectId?: string,
+): Promise<Map<string, number>> {
+  const first = new Date();
+  first.setUTCDate(1);
+  let q = supabase
+    .from("token_usage_daily")
+    .select("project_id, cost_sek")
+    .gte("usage_date", first.toISOString().slice(0, 10));
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  const map = new Map<string, number>();
+  for (const r of data ?? []) {
+    if (!r.project_id) continue;
+    map.set(
+      r.project_id as string,
+      (map.get(r.project_id as string) ?? 0) + Number(r.cost_sek ?? 0),
+    );
+  }
+  return map;
+}
+
 export async function listProjects(): Promise<Project[]> {
   const supabase = await createSupabaseServer();
-  const { data } = await supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .order("name");
-  return (data as unknown as DbProject[] | null ?? []).map(toProject);
+  const [{ data }, aiCosts] = await Promise.all([
+    supabase.from("projects").select(PROJECT_SELECT).order("name"),
+    fetchMonthAiCostByProject(supabase),
+  ]);
+  return (data as unknown as DbProject[] | null ?? []).map((r) =>
+    toProject(r, aiCosts.get(r.id) ?? 0),
+  );
 }
 
 export async function getProject(idOrSlug: string): Promise<Project | null> {
@@ -69,7 +125,10 @@ export async function getProject(idOrSlug: string): Promise<Project | null> {
     .select(PROJECT_SELECT)
     .eq("slug", stripP(idOrSlug))
     .maybeSingle();
-  return data ? toProject(data as unknown as DbProject) : null;
+  if (!data) return null;
+  const row = data as unknown as DbProject;
+  const aiCosts = await fetchMonthAiCostByProject(supabase, row.id);
+  return toProject(row, aiCosts.get(row.id) ?? 0);
 }
 
 export async function listProjectsForCustomer(
@@ -133,18 +192,35 @@ export async function getPortfolio(): Promise<PortfolioTotals> {
   thisMonth.setUTCDate(1);
   const isoMonth = thisMonth.toISOString().slice(0, 10);
 
-  const [{ data: pnl }, projects, live, customers] = await Promise.all([
-    supabase.from("mv_project_pnl_monthly").select("*").eq("period_month", isoMonth),
-    supabase.from("projects").select("*", { count: "exact", head: true }),
-    supabase
-      .from("projects")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "live"),
-    supabase.from("customers").select("*", { count: "exact", head: true }),
-  ]);
+  const [{ data: pnl }, { data: projectRows }, projects, live, customers] =
+    await Promise.all([
+      supabase
+        .from("mv_project_pnl_monthly")
+        .select("*")
+        .eq("period_month", isoMonth),
+      supabase
+        .from("projects")
+        .select("id, monthly_revenue_sek, status")
+        .neq("status", "offboarded"),
+      supabase.from("projects").select("*", { count: "exact", head: true }),
+      supabase
+        .from("projects")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "live"),
+      supabase.from("customers").select("*", { count: "exact", head: true }),
+    ]);
 
   const rows = pnl ?? [];
-  const total_mrr = rows.reduce((s, r) => s + Number(r.revenue_sek), 0);
+  // Revenue per project: invoiced (Fortnox) when present this month, else the
+  // manually set monthly_revenue_sek — Fortnox takes over automatically.
+  const invoicedByProject = new Map<string, number>();
+  for (const r of rows) {
+    invoicedByProject.set(r.project_id as string, Number(r.revenue_sek ?? 0));
+  }
+  const total_mrr = (projectRows ?? []).reduce((s, p) => {
+    const invoiced = invoicedByProject.get(p.id as string) ?? 0;
+    return s + (invoiced > 0 ? invoiced : Number(p.monthly_revenue_sek ?? 0));
+  }, 0);
   const ai_cost = rows.reduce((s, r) => s + Number(r.ai_cost_sek), 0);
   const infra_cost = rows.reduce((s, r) => s + Number(r.infra_cost_sek), 0);
   return {
@@ -221,7 +297,7 @@ interface DbCustomer {
   account_manager?: { full_name?: string | null } | null;
 }
 
-function toCustomer(r: DbCustomer): Customer {
+function toCustomer(r: DbCustomer, mrr = 0): Customer {
   return {
     id: r.slug, // use slug as id (matches lib/data shape)
     name: r.name,
@@ -229,7 +305,7 @@ function toCustomer(r: DbCustomer): Customer {
     cls: r.customer_class ?? "C",
     am: r.account_manager?.full_name ?? "—",
     contract: r.contract_status,
-    mrr: 0, // derive later from invoices view
+    mrr, // from v_customer_mrr (recurring, else trailing-3-month average)
     mark: pickMark(r.slug),
     init: r.name[0]?.toUpperCase() ?? "?",
   };
@@ -254,7 +330,7 @@ interface DbProject {
   }> | null;
 }
 
-function toProject(r: DbProject): Project {
+function toProject(r: DbProject, aiCost = 0): Project {
   const customer = Array.isArray(r.customer) ? r.customer[0] : r.customer;
   const activePm = (r.project_models ?? []).find((pm) => pm.is_active);
   const activeModel = activePm
@@ -277,7 +353,7 @@ function toProject(r: DbProject): Project {
     active_model: activeModel?.model_id ?? "",
     monthly_revenue: Number(r.monthly_revenue_sek ?? 0),
     infra_cost: Number(r.monthly_infra_budget_sek ?? 0),
-    ai_cost: 0, // aggregated from token_usage_daily
+    ai_cost: aiCost, // current-month token_usage_daily cost
     owner: "—",
     healthy: true,
   };
@@ -583,6 +659,7 @@ export async function getRecentUpdates(limit = 6): Promise<UpdateRow[]> {
   return out
     .sort((a, b) => (a.sort < b.sort ? 1 : a.sort > b.sort ? -1 : 0))
     .slice(0, limit)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .map(({ sort: _sort, ...rest }) => rest);
 }
 
@@ -639,6 +716,7 @@ export async function listUpdatesForProject(
   }
   return out
     .sort((a, b) => (a.sort < b.sort ? 1 : a.sort > b.sort ? -1 : 0))
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .map(({ sort: _sort, ...rest }) => rest);
 }
 

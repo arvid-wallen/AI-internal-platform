@@ -1,11 +1,16 @@
 import { getImportContext } from "@/lib/actions/card-costs";
+import { getSessionMember, hasRole } from "@/lib/auth";
 import { ImportClient } from "./ImportClient";
 import { ManualCostForm } from "./ManualCostForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function CostImportPage() {
-  const ctx = await getImportContext();
+  const [ctx, member] = await Promise.all([
+    getImportContext(),
+    getSessionMember(),
+  ]);
+  const canEdit = hasRole(member, "editor");
 
   return (
     <div className="page">
@@ -24,6 +29,12 @@ export default async function CostImportPage() {
         <div className="card">
           <div className="empty" style={{ padding: 16 }}>
             Supabase måste vara konfigurerat för import.
+          </div>
+        </div>
+      ) : !canEdit ? (
+        <div className="card">
+          <div className="empty" style={{ padding: 16 }}>
+            Du har läsbehörighet — import av kostnader kräver redaktörsroll.
           </div>
         </div>
       ) : (

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import {
+  errMsg,
   finishSyncRun,
   isCronAuthorized,
   jsonError,
@@ -8,17 +9,24 @@ import {
 } from "@/lib/cron";
 import {
   ensureFreshAccessToken,
-  listInvoicesSince,
+  FortnoxRateLimitError,
 } from "@/lib/integrations/fortnox";
+import {
+  syncFortnoxCustomers,
+  syncFortnoxInvoices,
+} from "@/lib/integrations/fortnox-sync";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 // GET /api/cron/sync-fortnox
-// Pulls all invoices created or updated in the last 35 days, upserts them
-// + invoice_lines, attributing to projects via tech article-code convention
-// AI-<KUND>-<PROJEKT> stored in invoice_lines.project_id.
+// Combined nightly Fortnox sync: refreshes the OAuth token once, mirrors the
+// customer register (invoices need fortnox_customer_id), then pulls invoices
+// — backfill from FORTNOX_BACKFILL_FROM on first run, lastmodified cursor
+// afterwards — and finally refreshes the P&L materialized view.
+// Running both steps in one process eliminates the refresh-token rotation
+// race the two separate crons had.
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return jsonError("unauthorized", 401);
   const run = await startSyncRun("fortnox");
@@ -33,115 +41,26 @@ export async function GET(request: NextRequest) {
       return jsonOk({ skipped: "not_connected" });
     }
 
-    const since = new Date();
-    since.setUTCDate(since.getUTCDate() - 35);
-    const fromDate = since.toISOString().slice(0, 10);
+    const { customers } = await syncFortnoxCustomers(accessToken);
+    const { invoices, mode, rateWarnings } =
+      await syncFortnoxInvoices(accessToken);
 
-    const invoices = await listInvoicesSince(fromDate, accessToken);
+    // Revenue data changed — re-materialize the P&L view.
     const supabase = createSupabaseAdmin();
+    await supabase.rpc("refresh_pnl_monthly");
 
-    // Map Fortnox CustomerNumber → public.customers.id via fortnox_customer_id.
-    const { data: customerRows } = await supabase
-      .from("customers")
-      .select("id, slug, fortnox_customer_id");
-    const customersByFortnoxId = new Map<string, { id: string; slug: string }>();
-    for (const c of customerRows ?? []) {
-      if (c.fortnox_customer_id)
-        customersByFortnoxId.set(c.fortnox_customer_id, {
-          id: c.id,
-          slug: c.slug,
-        });
-    }
-
-    // Map article codes AI-<CUSTOMER>-<PROJECT> → project_id via slug match.
-    const { data: projectRows } = await supabase
-      .from("projects")
-      .select("id, slug");
-    const projectsBySlug = new Map<string, string>();
-    for (const p of projectRows ?? []) projectsBySlug.set(p.slug, p.id);
-
-    let upsertedInvoices = 0;
-    for (const inv of invoices) {
-      const customer = customersByFortnoxId.get(inv.CustomerNumber);
-      const invoiceStatus = mapStatus(inv);
-
-      const { data: existing } = await supabase
-        .from("invoices")
-        .upsert(
-          {
-            fortnox_invoice_id: inv.DocumentNumber,
-            customer_id: customer?.id ?? null,
-            invoice_number: inv.DocumentNumber,
-            invoice_date: inv.InvoiceDate,
-            due_date: inv.DueDate,
-            total_excl_vat_sek: null,
-            total_incl_vat_sek: inv.Total,
-            status: invoiceStatus,
-            recurring: false,
-            raw: inv as unknown as Record<string, unknown>,
-            synced_at: new Date().toISOString(),
-          },
-          { onConflict: "fortnox_invoice_id" },
-        )
-        .select("id")
-        .single();
-      if (!existing) continue;
-      upsertedInvoices += 1;
-
-      // Replace invoice_lines for this invoice.
-      await supabase.from("invoice_lines").delete().eq("invoice_id", existing.id);
-      const lines = inv.InvoiceRows.map((row) => {
-        const project_id = resolveProjectIdFromArticle(
-          row.ArticleNumber,
-          projectsBySlug,
-        );
-        return {
-          invoice_id: existing.id,
-          description: row.Description,
-          amount_sek: row.Total,
-          project_id,
-          category: "subscription" as const,
-        };
+    if (rateWarnings > 0) {
+      await finishSyncRun(run?.id ?? null, "partial", {
+        records: invoices,
+        error: `${rateWarnings} fakturor utan valutakurs — SEK-belopp saknas (kolla fx_rates)`,
       });
-      if (lines.length > 0) {
-        await supabase.from("invoice_lines").insert(lines);
-      }
+    } else {
+      await finishSyncRun(run?.id ?? null, "ok", { records: invoices });
     }
-
-    await finishSyncRun(run?.id ?? null, "ok", {
-      records: upsertedInvoices,
-    });
-    return jsonOk({ invoices: upsertedInvoices });
+    return jsonOk({ customers, invoices, mode, rateWarnings });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await finishSyncRun(run?.id ?? null, "failed", { error: msg });
-    return jsonError(msg);
+    const status = e instanceof FortnoxRateLimitError ? "rate_limited" : "failed";
+    await finishSyncRun(run?.id ?? null, status, { error: errMsg(e) });
+    return jsonError(errMsg(e));
   }
-}
-
-function mapStatus(inv: {
-  Cancelled: boolean;
-  FinalPayDate: string | null;
-  Booked: boolean;
-  DueDate: string;
-}): "draft" | "sent" | "paid" | "overdue" | "credited" {
-  if (inv.Cancelled) return "credited";
-  if (inv.FinalPayDate) return "paid";
-  if (!inv.Booked) return "draft";
-  const due = Date.parse(inv.DueDate);
-  if (Number.isFinite(due) && due < Date.now()) return "overdue";
-  return "sent";
-}
-
-// Article code convention: AI-<CUSTOMER>-<PROJECT>
-//   e.g. AI-KLARNA-DISPUTE → projects.slug = klarna-dispute
-function resolveProjectIdFromArticle(
-  articleCode: string | null | undefined,
-  projectsBySlug: Map<string, string>,
-): string | null {
-  if (!articleCode) return null;
-  const match = /^AI-([A-Z0-9]+)-([A-Z0-9]+)$/.exec(articleCode);
-  if (!match) return null;
-  const slug = `${match[1].toLowerCase()}-${match[2].toLowerCase()}`;
-  return projectsBySlug.get(slug) ?? null;
 }

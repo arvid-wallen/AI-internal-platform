@@ -14,6 +14,7 @@ import {
   openAiAdminKeys,
 } from "@/lib/integrations/openai";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { FX_MISSING_ERROR, fxStaleWarning, getLatestUsdSek } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -67,13 +68,12 @@ export async function GET(request: NextRequest) {
     let modelMap = new Map<string, string>(
       (models ?? []).map((m) => [m.model_id, m.id]),
     );
-    const { data: fx } = await supabase
-      .from("fx_rates")
-      .select("usd_sek")
-      .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const usdSek = fx?.usd_sek ?? 10.78;
+    const fx = await getLatestUsdSek(supabase);
+    if (!fx) {
+      await finishSyncRun(run?.id ?? null, "failed", { error: FX_MISSING_ERROR });
+      return jsonError(FX_MISSING_ERROR);
+    }
+    const usdSek = fx.usdSek;
 
     // 1) Gather usage (completions + embeddings) and cost across all orgs,
     //    aggregating usage to one row per (project, model, day).
@@ -229,9 +229,10 @@ export async function GET(request: NextRequest) {
       if (error) throw error;
     }
 
-    await finishSyncRun(run?.id ?? null, "ok", {
+    await finishSyncRun(run?.id ?? null, fx.stale ? "partial" : "ok", {
       records: rows.length,
       cost_usd: totalCostUsd,
+      error: fx.stale ? fxStaleWarning(fx.date) : undefined,
     });
     return jsonOk({ orgs: keys.length, records: rows.length });
   } catch (e) {
