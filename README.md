@@ -96,8 +96,9 @@ incidents-fliken: auto-skapas med severity från Sentry-level + spridning
 medium; warning→low), auto-löses när de löses/ignoreras i Sentry, återöppnas
 vid regression. Nya high/critical-incidenter notifieras i Slack. Mappa
 Sentry-projekt → Hub-projekt under Settings ("Sentry project-mappning").
-Manuellt skapade incidenter rörs aldrig av synken. Kräver `SENTRY_AUTH_TOKEN`
-(org-token med org:read + project:read + event:read) + `SENTRY_ORG`.
+Manuellt skapade incidenter rörs aldrig av synken. Nyckeln (org-token med
+org:read + project:read + event:read) läggs in under **Settings →
+API-nycklar** (env-varn `SENTRY_AUTH_TOKEN` fungerar som fallback).
 
 ## Notiser (Slack)
 
@@ -122,9 +123,11 @@ Se `.env.local.example`. I Vercel prod behövs minst: Supabase-trion,
 `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `ANTHROPIC_ADMIN_KEY`,
 `ANTHROPIC_API_KEY` (kortimportens klassificerare), `OPENAI_ADMIN_KEY`(+`_HAUS`),
 `FORTNOX_CLIENT_ID`/`FORTNOX_CLIENT_SECRET`, `SLACK_WEBHOOK_URL`; valfritt
-`SENTRY_AUTH_TOKEN`+`SENTRY_ORG` (+`SENTRY_REGION_URL`), `GITHUB_TOKEN`,
-`VERCEL_TOKEN`+`VERCEL_TEAM_ID`, `GOOGLE_CREDENTIALS_JSON`+
-`GOOGLE_BILLING_TABLE`, `FORTNOX_BACKFILL_FROM`.
+`GOOGLE_CREDENTIALS_JSON`+`GOOGLE_BILLING_TABLE`, `FORTNOX_BACKFILL_FROM`,
+`VERCEL_TEAM_ID`, `SENTRY_ORG`/`SENTRY_REGION_URL` (defaultar till Haus org).
+**Sentry-, GitHub- och Vercel-nycklarna hanteras i UI:t** (Settings →
+API-nycklar, lagras i integrations_credentials); env-varianterna
+`SENTRY_AUTH_TOKEN`/`GITHUB_TOKEN`/`VERCEL_TOKEN` är bara fallback.
 
 ## Struktur
 

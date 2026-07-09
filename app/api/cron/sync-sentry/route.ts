@@ -14,6 +14,7 @@ import {
   sentryConfig,
   type SentryIssue,
 } from "@/lib/integrations/sentry";
+import { getIntegrationKey } from "@/lib/integrations/keys";
 import { notifySlack } from "@/lib/notify";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 
@@ -30,10 +31,11 @@ export async function GET(request: NextRequest) {
   const run = await startSyncRun("sentry");
 
   try {
-    const cfg = sentryConfig();
+    const cfg = sentryConfig(await getIntegrationKey("sentry"));
     if (!cfg) {
       await finishSyncRun(run?.id ?? null, "partial", {
-        error: "Not configured — set SENTRY_AUTH_TOKEN + SENTRY_ORG",
+        error:
+          "Not configured — lägg in Sentry-nyckeln under Settings → API-nycklar",
       });
       return jsonOk({ skipped: "not_configured" });
     }

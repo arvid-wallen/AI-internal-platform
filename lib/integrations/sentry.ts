@@ -24,14 +24,16 @@ export interface SentryProject {
   name: string;
 }
 
-export function sentryConfig(): {
+// Token comes from the settings UI (integrations_credentials) with the
+// SENTRY_AUTH_TOKEN env var as fallback — the caller resolves it via
+// getIntegrationKey("sentry"). Org/region have Haus defaults.
+export function sentryConfig(token: string | null): {
   token: string;
   org: string;
   baseUrl: string;
 } | null {
-  const token = process.env.SENTRY_AUTH_TOKEN;
-  const org = process.env.SENTRY_ORG;
-  if (!token || !org) return null;
+  if (!token) return null;
+  const org = process.env.SENTRY_ORG ?? "haus-ai-je";
   const baseUrl = (
     process.env.SENTRY_REGION_URL ?? "https://de.sentry.io"
   ).replace(/\/$/, "");
