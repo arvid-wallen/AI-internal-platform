@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
 
     // OpenAI projects across all configured org keys.
     const openaiSources: Array<{ id: string; name: string }> = [];
-    for (const key of openAiAdminKeys()) {
+    for (const key of await openAiAdminKeys()) {
       try {
         for (const p of await fetchProjects(key))
           openaiSources.push({ id: p.id, name: p.name });

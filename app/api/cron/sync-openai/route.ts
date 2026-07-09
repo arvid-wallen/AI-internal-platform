@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const run = await startSyncRun("openai");
 
   try {
-    const keys = openAiAdminKeys();
+    const keys = await openAiAdminKeys();
     if (keys.length === 0) {
       await finishSyncRun(run?.id ?? null, "failed", {
         error: "No OpenAI admin key set (OPENAI_ADMIN_KEY / OPENAI_ADMIN_KEY_HAUS)",

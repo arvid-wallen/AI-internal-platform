@@ -119,15 +119,15 @@ lagras — utan roterad token är endpointet avstängt/401).
 
 ## Env-variabler
 
-Se `.env.local.example`. I Vercel prod behövs minst: Supabase-trion,
-`NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `ANTHROPIC_ADMIN_KEY`,
-`ANTHROPIC_API_KEY` (kortimportens klassificerare), `OPENAI_ADMIN_KEY`(+`_HAUS`),
-`FORTNOX_CLIENT_ID`/`FORTNOX_CLIENT_SECRET`, `SLACK_WEBHOOK_URL`; valfritt
-`GOOGLE_CREDENTIALS_JSON`+`GOOGLE_BILLING_TABLE`, `FORTNOX_BACKFILL_FROM`,
-`VERCEL_TEAM_ID`, `SENTRY_ORG`/`SENTRY_REGION_URL` (defaultar till Haus org).
-**Sentry-, GitHub- och Vercel-nycklarna hanteras i UI:t** (Settings →
-API-nycklar, lagras i integrations_credentials); env-varianterna
-`SENTRY_AUTH_TOKEN`/`GITHUB_TOKEN`/`VERCEL_TOKEN` är bara fallback.
+Se `.env.local.example`. **Integrationsnycklarna hanteras i UI:t** (Settings →
+API-nycklar, lagras i integrations_credentials med env-vars som fallback):
+Sentry, GitHub, Vercel, Anthropic (admin + API), OpenAI (två orgar) och
+Google (service-account-JSON + billing-tabell). I Vercel-env måste ligga det
+plattformen inte kan lagra i sin egen databas: Supabase-trion,
+`NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `FORTNOX_CLIENT_ID`/`FORTNOX_CLIENT_SECRET`
+(OAuth-appens id, inte tokens), `SLACK_WEBHOOK_URL`; valfritt
+`FORTNOX_BACKFILL_FROM`, `VERCEL_TEAM_ID`, `SENTRY_ORG`/`SENTRY_REGION_URL`
+(defaultar till Haus org).
 
 ## Struktur
 

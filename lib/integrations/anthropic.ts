@@ -2,10 +2,21 @@
 // Docs: https://docs.claude.com/en/api/admin-api/usage-cost/get-cost-report
 //
 // Auth: requires an admin org key (`sk-ant-admin01-...`) — get one in
-// Console → Settings → API keys → "Admin keys".
-// Set as env var ANTHROPIC_ADMIN_KEY.
+// Console → Settings → API keys → "Admin keys". Set under Settings →
+// API-nycklar in the platform (env var ANTHROPIC_ADMIN_KEY as fallback).
+import { getIntegrationKey } from "./keys";
 
 const BASE = "https://api.anthropic.com/v1";
+
+async function adminKey(): Promise<string> {
+  const key = await getIntegrationKey("anthropic_admin");
+  if (!key) {
+    throw new Error(
+      "Anthropic admin-nyckel saknas — lägg in den under Settings → API-nycklar",
+    );
+  }
+  return key;
+}
 
 export interface AnthropicCostBucket {
   starting_at: string;
@@ -66,8 +77,7 @@ async function* paginate<T extends { has_more: boolean; next_page: string | null
 export async function fetchCostReport(
   opts: FetchOpts,
 ): Promise<AnthropicCostBucket[]> {
-  const apiKey = process.env.ANTHROPIC_ADMIN_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_ADMIN_KEY not set");
+  const apiKey = await adminKey();
 
   const url = new URL(`${BASE}/organizations/cost_report`);
   url.searchParams.set("starting_at", opts.starting_at);
@@ -88,8 +98,7 @@ export async function fetchCostReport(
 }
 
 export async function fetchUsageReport(opts: FetchOpts) {
-  const apiKey = process.env.ANTHROPIC_ADMIN_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_ADMIN_KEY not set");
+  const apiKey = await adminKey();
 
   const url = new URL(`${BASE}/organizations/usage_report/messages`);
   url.searchParams.set("starting_at", opts.starting_at);
@@ -129,8 +138,7 @@ export interface AnthropicUsageBucket {
 export async function fetchMessagesUsage(
   opts: FetchOpts,
 ): Promise<AnthropicUsageBucket[]> {
-  const apiKey = process.env.ANTHROPIC_ADMIN_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_ADMIN_KEY not set");
+  const apiKey = await adminKey();
 
   const url = new URL(`${BASE}/organizations/usage_report/messages`);
   url.searchParams.set("starting_at", opts.starting_at);
@@ -158,8 +166,7 @@ export interface AnthropicWorkspace {
 }
 
 export async function fetchWorkspaces(): Promise<AnthropicWorkspace[]> {
-  const apiKey = process.env.ANTHROPIC_ADMIN_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_ADMIN_KEY not set");
+  const apiKey = await adminKey();
 
   const out: AnthropicWorkspace[] = [];
   let afterId: string | null = null;

@@ -10,6 +10,7 @@
 // Uses the BigQuery REST API + a self-signed JWT so we avoid a heavyweight SDK.
 
 import crypto from "node:crypto";
+import { getIntegrationKey } from "./keys";
 
 interface ServiceAccount {
   client_email: string;
@@ -22,9 +23,9 @@ export interface GoogleBillingConfig {
   billingTable: string; // project.dataset.table
 }
 
-export function readGoogleConfig(): GoogleBillingConfig | null {
-  const raw = process.env.GOOGLE_CREDENTIALS_JSON;
-  const billingTable = process.env.GOOGLE_BILLING_TABLE;
+export async function readGoogleConfig(): Promise<GoogleBillingConfig | null> {
+  const raw = await getIntegrationKey("google_credentials");
+  const billingTable = await getIntegrationKey("google_billing_table");
   if (!raw || !billingTable) return null;
   let credentials: ServiceAccount;
   try {

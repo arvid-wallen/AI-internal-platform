@@ -6,10 +6,10 @@ import {
   clearIntegrationKey,
   saveIntegrationKey,
 } from "@/lib/actions/integration-keys";
-import type { KeyableProvider } from "@/lib/integrations/keys";
+import type { KeyId } from "@/lib/integrations/keys";
 
 export interface ApiKeyStatus {
-  provider: KeyableProvider;
+  provider: KeyId;
   label: string;
   hint: string;
   source: "db" | "env" | "none";
@@ -27,7 +27,7 @@ export function ApiKeys({ keys }: { keys: ApiKeyStatus[] }) {
     setTimeout(() => setToast(null), 5000);
   };
 
-  const save = (provider: KeyableProvider) => {
+  const save = (provider: KeyId) => {
     const token = (values[provider] ?? "").trim();
     if (!token) return;
     startTransition(async () => {
@@ -37,7 +37,7 @@ export function ApiKeys({ keys }: { keys: ApiKeyStatus[] }) {
     });
   };
 
-  const clear = (provider: KeyableProvider) => {
+  const clear = (provider: KeyId) => {
     startTransition(async () => {
       const res = await clearIntegrationKey(provider);
       flash(res.message ?? (res.ok ? "Borttagen." : "Något gick fel."));
@@ -126,6 +126,11 @@ export function ApiKeys({ keys }: { keys: ApiKeyStatus[] }) {
           {toast}
         </div>
       )}
+      <p className="dim mt-3" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+        Fortnox ansluts via OAuth-kortet ovan (självroterande tokens).
+        Supabase-nycklarna är plattformens egna databas-uppgifter och måste
+        ligga i Vercel-miljön.
+      </p>
     </div>
   );
 }

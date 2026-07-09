@@ -1,7 +1,8 @@
 // OpenAI Organization Usage API client.
 // Docs: https://platform.openai.com/docs/api-reference/usage
 // Requires an admin org key (sk-admin-...). Pass apiKey explicitly to support
-// multiple orgs; falls back to OPENAI_ADMIN_KEY for single-org callers.
+// multiple orgs; keys resolve via Settings → API-nycklar (env fallback).
+import { getIntegrationKey } from "./keys";
 
 const BASE = "https://api.openai.com/v1/organization";
 
@@ -133,9 +134,13 @@ export async function fetchCosts(
 }
 
 // All configured OpenAI org admin keys (Nimo legacy + Haus AI new, etc).
-export function openAiAdminKeys(): string[] {
-  return [process.env.OPENAI_ADMIN_KEY, process.env.OPENAI_ADMIN_KEY_HAUS]
-    .filter((k): k is string => !!k);
+// Managed under Settings → API-nycklar; env vars as fallback per slot.
+export async function openAiAdminKeys(): Promise<string[]> {
+  const keys = await Promise.all([
+    getIntegrationKey("openai_admin"),
+    getIntegrationKey("openai_admin_2"),
+  ]);
+  return [...new Set(keys.filter((k): k is string => !!k))];
 }
 
 // ============ Projects (for auto-provisioning Hub projects) ============

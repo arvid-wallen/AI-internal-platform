@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const run = await startSyncRun("google");
 
   try {
-    const cfg = readGoogleConfig();
+    const cfg = await readGoogleConfig();
     if (!cfg) {
       await finishSyncRun(run?.id ?? null, "partial", {
         error:
