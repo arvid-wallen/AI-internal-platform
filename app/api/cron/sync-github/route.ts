@@ -8,6 +8,7 @@ import {
   errMsg,
 } from "@/lib/cron";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { getIntegrationKey } from "@/lib/integrations/keys";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -18,10 +19,11 @@ export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return jsonError("unauthorized", 401);
   const run = await startSyncRun("github");
   try {
-    const token = process.env.GITHUB_TOKEN;
+    const token = await getIntegrationKey("github");
     if (!token) {
       await finishSyncRun(run?.id ?? null, "failed", {
-        error: "GITHUB_TOKEN not set",
+        error:
+          "Ingen GitHub-nyckel — lägg in den under Settings → API-nycklar",
       });
       return jsonOk({ skipped: "no_token" });
     }

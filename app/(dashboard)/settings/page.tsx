@@ -4,6 +4,7 @@ import { getSessionMember, hasRole } from "@/lib/auth";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { Icons } from "@/components/icons";
 import { Pill, SectionHead, StatusPill } from "@/components/ui";
+import { ApiKeys, type ApiKeyStatus } from "./ApiKeys";
 import { FortnoxConnect } from "./FortnoxConnect";
 import { WorkspaceMapping } from "./WorkspaceMapping";
 import {
@@ -13,6 +14,42 @@ import {
 } from "./ProjectCustomerMapping";
 
 export const dynamic = "force-dynamic";
+
+// API-key status for the settings card (write-only: only presence is read).
+// integrations_credentials is admin-only by RLS — non-admins read nothing,
+// and the card only renders for admins anyway.
+async function getApiKeyStatuses(): Promise<ApiKeyStatus[]> {
+  const supabase = await createSupabaseServer();
+  const { data } = await supabase
+    .from("integrations_credentials")
+    .select("provider_slug, access_token")
+    .in("provider_slug", ["sentry", "github", "vercel"]);
+  const hasDbKey = new Map(
+    (data ?? []).map((r) => [r.provider_slug as string, !!r.access_token]),
+  );
+  const source = (provider: string, envName: string): ApiKeyStatus["source"] =>
+    hasDbKey.get(provider) ? "db" : process.env[envName] ? "env" : "none";
+  return [
+    {
+      provider: "sentry",
+      label: "Sentry",
+      hint: "Org auth token (org:read, project:read, event:read) — driver incident-synken.",
+      source: source("sentry", "SENTRY_AUTH_TOKEN"),
+    },
+    {
+      provider: "github",
+      label: "GitHub",
+      hint: "Personal access token med repo-läsning — repo-metadata på projektsidorna.",
+      source: source("github", "GITHUB_TOKEN"),
+    },
+    {
+      provider: "vercel",
+      label: "Vercel",
+      hint: "API-token — länkar Hub-projekt till Vercel-projekt.",
+      source: source("vercel", "VERCEL_TOKEN"),
+    },
+  ];
+}
 
 // Fortnox connection state. integrations_credentials is admin-only by RLS,
 // so non-admins simply read null here — the card then shows a neutral text.
@@ -75,6 +112,7 @@ export default async function SettingsPage({
     member,
     fortnox,
     unassigned,
+    apiKeys,
     params,
   ] = await Promise.all([
     listIntegrations(),
@@ -84,6 +122,7 @@ export default async function SettingsPage({
     getSessionMember(),
     getFortnoxStatus(),
     getUnassignedProjects(),
+    getApiKeyStatuses(),
     searchParams,
   ]);
   const isAdmin = hasRole(member, "admin");
@@ -214,6 +253,8 @@ export default async function SettingsPage({
             </div>
           </div>
 
+          {isAdmin && <ApiKeys keys={apiKeys} />}
+
           {mapping.configured && isAdmin && (
             <>
               <WorkspaceMapping
@@ -229,6 +270,13 @@ export default async function SettingsPage({
                 idLabel="project_id"
                 projects={mapping.projects}
                 initialMap={mapping.openaiMap}
+              />
+              <WorkspaceMapping
+                provider="sentry"
+                label="Sentry project-mappning"
+                idLabel="sentry project slug"
+                projects={mapping.projects}
+                initialMap={mapping.sentryMap}
               />
             </>
           )}

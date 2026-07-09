@@ -44,7 +44,7 @@ export const manualCostSchema = z.object({
 });
 
 export const workspaceMapSchema = z.object({
-  provider: z.enum(["anthropic", "openai"]),
+  provider: z.enum(["anthropic", "openai", "sentry"]),
   map: z.record(z.string().min(1).max(200), z.string().uuid()),
 });
 

@@ -8,6 +8,7 @@ import {
   errMsg,
 } from "@/lib/cron";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { getIntegrationKey } from "@/lib/integrations/keys";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -20,10 +21,11 @@ export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return jsonError("unauthorized", 401);
   const run = await startSyncRun("vercel");
   try {
-    const token = process.env.VERCEL_TOKEN;
+    const token = await getIntegrationKey("vercel");
     if (!token) {
       await finishSyncRun(run?.id ?? null, "failed", {
-        error: "VERCEL_TOKEN not set",
+        error:
+          "Ingen Vercel-nyckel — lägg in den under Settings → API-nycklar",
       });
       return jsonOk({ skipped: "no_token" });
     }

@@ -7,10 +7,10 @@ import { INVALID_INPUT_MESSAGE, workspaceMapSchema } from "@/lib/schemas";
 
 // Maps a provider's workspace/project id -> our project uuid, stored in
 // integrations_credentials.metadata. Anthropic uses key "workspace_map",
-// OpenAI uses "project_map" (matches the cron handlers in
-// app/api/cron/sync-anthropic and sync-openai).
+// OpenAI uses "project_map", Sentry uses "sentry_project_map" (matches the
+// cron handlers in app/api/cron/sync-anthropic, sync-openai, sync-sentry).
 
-export type MappableProvider = "anthropic" | "openai";
+export type MappableProvider = "anthropic" | "openai" | "sentry";
 
 export interface MappableProject {
   id: string; // real project uuid
@@ -23,14 +23,25 @@ export interface MappingData {
   projects: MappableProject[];
   anthropicMap: Record<string, string>;
   openaiMap: Record<string, string>;
+  sentryMap: Record<string, string>;
 }
 
 const metaKey = (p: MappableProvider) =>
-  p === "openai" ? "project_map" : "workspace_map";
+  p === "openai"
+    ? "project_map"
+    : p === "sentry"
+      ? "sentry_project_map"
+      : "workspace_map";
 
 export async function getMappingData(): Promise<MappingData> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    return { configured: false, projects: [], anthropicMap: {}, openaiMap: {} };
+    return {
+      configured: false,
+      projects: [],
+      anthropicMap: {},
+      openaiMap: {},
+      sentryMap: {},
+    };
   }
   const supabase = await createSupabaseServer();
 
@@ -39,7 +50,7 @@ export async function getMappingData(): Promise<MappingData> {
     supabase
       .from("integrations_credentials")
       .select("provider_slug, metadata")
-      .in("provider_slug", ["anthropic", "openai"]),
+      .in("provider_slug", ["anthropic", "openai", "sentry"]),
   ]);
 
   const mapFor = (p: MappableProvider): Record<string, string> => {
@@ -53,6 +64,7 @@ export async function getMappingData(): Promise<MappingData> {
     projects: (projects ?? []) as MappableProject[],
     anthropicMap: mapFor("anthropic"),
     openaiMap: mapFor("openai"),
+    sentryMap: mapFor("sentry"),
   };
 }
 

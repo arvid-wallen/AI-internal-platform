@@ -101,6 +101,7 @@ export interface Incident {
   title: string;
   summary: string;
   resolved: boolean;
+  url: string | null; // deep link (t.ex. Sentry-permalink)
 }
 
 export type TeamRole = "admin" | "editor" | "viewer";
