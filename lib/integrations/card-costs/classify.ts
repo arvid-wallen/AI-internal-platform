@@ -3,10 +3,12 @@
 // forced to return structured JSON. The static system prompt (taxonomy + known
 // vendors + projects) is marked cache_control so repeat monthly runs are cheap.
 //
-// Requires ANTHROPIC_API_KEY (a regular key, NOT the admin key). If it's unset
-// or the call fails, returns an empty map and the caller leaves those rows for
-// manual review — nothing throws.
+// Requires the "Anthropic · API" key (a regular key, NOT the admin key) —
+// set under Settings → API-nycklar (env var ANTHROPIC_API_KEY as fallback).
+// If it's unset or the call fails, returns an empty map and the caller leaves
+// those rows for manual review — nothing throws.
 
+import { getIntegrationKey } from "@/lib/integrations/keys";
 import type { CostCategory } from "@/lib/types";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -52,7 +54,7 @@ export async function classifyMerchants(
   ctx: ClassifyContext,
 ): Promise<Map<string, AiClassification>> {
   const result = new Map<string, AiClassification>();
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getIntegrationKey("anthropic_api");
   const uniq = [...new Set(merchants.filter((m) => m.trim()))];
   if (!apiKey || uniq.length === 0) return result;
 

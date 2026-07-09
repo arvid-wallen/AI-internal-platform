@@ -4,6 +4,7 @@ import { getSessionMember, hasRole } from "@/lib/auth";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { Icons } from "@/components/icons";
 import { Pill, SectionHead, StatusPill } from "@/components/ui";
+import { KEY_DEFS } from "@/lib/integrations/keys";
 import { ApiKeys, type ApiKeyStatus } from "./ApiKeys";
 import { FortnoxConnect } from "./FortnoxConnect";
 import { WorkspaceMapping } from "./WorkspaceMapping";
@@ -17,38 +18,39 @@ export const dynamic = "force-dynamic";
 
 // API-key status for the settings card (write-only: only presence is read).
 // integrations_credentials is admin-only by RLS — non-admins read nothing,
-// and the card only renders for admins anyway.
+// and the card only renders for admins anyway. Fortnox is excluded on
+// purpose (OAuth-token, not a static key); its row's access_token is the
+// rotating OAuth token, never shown here.
 async function getApiKeyStatuses(): Promise<ApiKeyStatus[]> {
   const supabase = await createSupabaseServer();
+  const rows = [...new Set(KEY_DEFS.map((d) => d.row))];
   const { data } = await supabase
     .from("integrations_credentials")
-    .select("provider_slug, access_token")
-    .in("provider_slug", ["sentry", "github", "vercel"]);
-  const hasDbKey = new Map(
-    (data ?? []).map((r) => [r.provider_slug as string, !!r.access_token]),
+    .select("provider_slug, access_token, metadata")
+    .in("provider_slug", rows);
+  const byRow = new Map(
+    (data ?? []).map((r) => [r.provider_slug as string, r]),
   );
-  const source = (provider: string, envName: string): ApiKeyStatus["source"] =>
-    hasDbKey.get(provider) ? "db" : process.env[envName] ? "env" : "none";
-  return [
-    {
-      provider: "sentry",
-      label: "Sentry",
-      hint: "Org auth token (org:read, project:read, event:read) — driver incident-synken.",
-      source: source("sentry", "SENTRY_AUTH_TOKEN"),
-    },
-    {
-      provider: "github",
-      label: "GitHub",
-      hint: "Personal access token med repo-läsning — repo-metadata på projektsidorna.",
-      source: source("github", "GITHUB_TOKEN"),
-    },
-    {
-      provider: "vercel",
-      label: "Vercel",
-      hint: "API-token — länkar Hub-projekt till Vercel-projekt.",
-      source: source("vercel", "VERCEL_TOKEN"),
-    },
-  ];
+  return KEY_DEFS.map((def) => {
+    const row = byRow.get(def.row);
+    let inDb = false;
+    if (row) {
+      if (def.slot === "default") {
+        inDb = !!row.access_token;
+      } else {
+        const meta = (row.metadata as Record<string, unknown> | null) ?? {};
+        const apiKeys =
+          (meta.api_keys as Record<string, string> | undefined) ?? {};
+        inDb = !!apiKeys[def.slot];
+      }
+    }
+    return {
+      provider: def.id,
+      label: def.label,
+      hint: def.hint,
+      source: inDb ? "db" : process.env[def.env] ? "env" : "none",
+    };
+  });
 }
 
 // Fortnox connection state. integrations_credentials is admin-only by RLS,
